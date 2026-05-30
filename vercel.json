@@ -1,6 +1,9 @@
 {
   "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install"
+  "functions": {
+    "app/api/submissions/route.ts": { "maxDuration": 60 },
+    "app/api/tasks/route.ts": { "maxDuration": 30 },
+    "app/api/sow/route.ts": { "maxDuration": 30 },
+    "app/api/clients/route.ts": { "maxDuration": 30 }
+  }
 }

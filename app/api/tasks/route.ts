@@ -1,3 +1,6 @@
+export const runtime = 'nodejs'
+export const maxDuration = 30
+
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
 import { getTasksFromSheet, saveTaskToSheet, deleteTaskFromSheet } from '@/lib/drive'
