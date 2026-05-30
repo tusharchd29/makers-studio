@@ -61,7 +61,8 @@ export async function uploadFileToStorage(
   storagePath: string,
   mimeType: string
 ): Promise<{ storagePath: string; viewUrl: string }> {
-  const { error } = await getSupabase().storage
+  const sb = await getSupabase()
+  const { error } = await sb.storage
     .from(BUCKET)
     .upload(storagePath, buffer, {
       contentType: mimeType,
@@ -71,7 +72,7 @@ export async function uploadFileToStorage(
   if (error) throw new Error(`Storage upload failed: ${error.message}`)
 
   // Generate a signed URL valid for 10 years (max allowed)
-  const { data: signedData, error: signErr } = await getSupabase().storage
+  const { data: signedData, error: signErr } = await (await getSupabase()).storage
     .from(BUCKET)
     .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10)
 
@@ -82,7 +83,7 @@ export async function uploadFileToStorage(
 
 export async function getNextVersion(clientName: string, taskName: string, month: string, fileType: string): Promise<number> {
   const prefix = `${clientName}/${month}/${fileType}/${taskName} - v`
-  const { data } = await getSupabase().storage.from(BUCKET).list(`${clientName}/${month}/${fileType}`, {
+  const { data } = await (await getSupabase()).storage.from(BUCKET).list(`${clientName}/${month}/${fileType}`, {
     search: taskName,
   })
   if (!data || data.length === 0) return 1
