@@ -8,6 +8,7 @@ import {
 import { randomUUID } from 'crypto'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const HAS_STORAGE = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
