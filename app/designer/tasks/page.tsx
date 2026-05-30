@@ -168,8 +168,6 @@ export default function DesignerTasksPage() {
               const needsWork = status === 'revision' || status === 'rejected'
               const canSubmit  = status === 'not-submitted' || needsWork
               const isLocked   = status === 'pending'
-              const canSubmit  = status === 'not-submitted' || needsWork
-              const isLocked   = status === 'pending'
               return (
                 <div key={t.id} style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_META[status]?.color || 'transparent'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
