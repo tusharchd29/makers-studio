@@ -18,7 +18,7 @@ interface Submission {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  pending:  { label: 'Pending Review', color: '#ff9b4e', bg: '#ff9b4e18', icon: '⏳' },
+  pending:  { label: 'In Review',     color: '#ff9b4e', bg: '#ff9b4e18', icon: '⏳' },
   approved: { label: 'Approved',       color: '#4ede8c', bg: '#4ede8c18', icon: '✅' },
   revision: { label: 'Needs Revision', color: '#5b9cf6', bg: '#5b9cf618', icon: '↩' },
   rejected: { label: 'Rejected',       color: '#ff5f5f', bg: '#ff5f5f18', icon: '✕' },
@@ -98,7 +98,7 @@ export default function MySubmissionsPage() {
                   color: filter === f ? '#fff' : 'var(--text2)',
                   textTransform: 'capitalize',
                 }}>
-                {f === 'all' ? `All (${submissions.length})` : `${f} (${submissions.filter(s => s.status === f).length})`}
+                {f === 'all' ? `All (${submissions.length})` : f === 'pending' ? `In Review (${submissions.filter(s => s.status === 'pending').length})` : `${f.charAt(0).toUpperCase()+f.slice(1)} (${submissions.filter(s => s.status === f).length})`}
               </button>
             ))}
           </div>

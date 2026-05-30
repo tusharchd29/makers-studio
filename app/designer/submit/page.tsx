@@ -134,7 +134,8 @@ function SubmitForm() {
       const data = await res.json()
       setProgress(100)
       setSubmitting(false)
-      setResult({ storagePath: data.storagePath, version: data.version, viewUrl: data.viewUrl })
+      setResult({ storagePath: data.storagePath, version: data.draftNumber || data.version, viewUrl: data.viewUrl })
+      router.refresh() // refresh server cache so tasks page shows 'In Review' immediately
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

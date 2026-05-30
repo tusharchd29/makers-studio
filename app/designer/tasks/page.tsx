@@ -62,7 +62,7 @@ export default function DesignerTasksPage() {
         const map: Record<string, { status: string; pmComment: string; submissionId: string }> = {}
         // keep latest submission per task
         s.forEach((sub: { taskId: string; status: string; pmComment: string; id: string }) => {
-          map[sub.taskId] = { status: sub.status, pmComment: sub.pmComment, submissionId: sub.id }
+          if (!map[sub.taskId]) map[sub.taskId] = { status: sub.status, pmComment: sub.pmComment, submissionId: sub.id }
         })
         setSubMap(map)
       }
