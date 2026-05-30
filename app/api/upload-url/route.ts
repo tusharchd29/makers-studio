@@ -18,18 +18,29 @@ export async function POST(req: NextRequest) {
   const { getDB } = await import('@/lib/supabase')
   const db = await getDB()
 
-  // Get current draft count — new draft = next number, NO deletion here
+  // Get current draft number from DB
   const { data: existing } = await db
     .from('makers_studio_submissions')
     .select('draft_number')
     .eq('task_id', taskId)
     .single()
 
-  const nextDraft    = existing ? (existing.draft_number as number) + 1 : 1
-  const fileName     = `${taskName} - draft${nextDraft}.${ext}`
-  const storagePath  = `${folderPath}/${fileName}`
+  const nextDraft   = existing ? (existing.draft_number as number) + 1 : 1
+  const fileName    = `${taskName} - draft${nextDraft}.${ext}`
+  const storagePath = `${folderPath}/${fileName}`
 
-  // Create signed upload URL — each draft gets its own unique path
+  // Delete file at this exact path if it already exists (failed previous attempt)
+  // Supabase storage will 409 "resource already exists" if we don't clear it first
+  await db.storage.from(BUCKET).remove([storagePath])
+
+  // Also list the folder and delete any stale draft with same number from a different ext
+  const { data: listed } = await db.storage.from(BUCKET).list(folderPath, { search: `${taskName} - draft${nextDraft}` })
+  if (listed && listed.length > 0) {
+    const stalePaths = listed.map((f: { name: string }) => `${folderPath}/${f.name}`)
+    await db.storage.from(BUCKET).remove(stalePaths)
+  }
+
+  // Create signed upload URL
   const { data, error } = await db.storage.from(BUCKET).createSignedUploadUrl(storagePath)
   if (error || !data) return NextResponse.json({ error: error?.message || 'Failed to create upload URL' }, { status: 500 })
 
