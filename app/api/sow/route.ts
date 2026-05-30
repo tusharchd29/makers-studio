@@ -1,12 +1,8 @@
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 30
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
-import { getSOWFromSheet, saveSOWToSheet } from '@/lib/drive'
-
-const HAS_DRIVE = !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY
 
 async function getUser(req: NextRequest) {
   const token = req.cookies.get('ms_session')?.value
@@ -17,14 +13,26 @@ async function getUser(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!HAS_DRIVE) return NextResponse.json([])
-  return NextResponse.json(await getSOWFromSheet())
+  const { getDB } = await import('@/lib/supabase')
+  const db = await getDB()
+  const { data, error } = await db.from('makers_studio_sow').select('*')
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
 }
 
 export async function POST(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const entry = await req.json()
-  if (HAS_DRIVE) await saveSOWToSheet(entry)
+  const { getDB } = await import('@/lib/supabase')
+  const db = await getDB()
+  const { error } = await db.from('makers_studio_sow').upsert({
+    client_id: entry.clientId,
+    reels: entry.reels || 0, stories: entry.stories || 0,
+    statics: entry.statics || 0, videos: entry.videos || 0,
+    photos: entry.photos || 0, carousels: entry.carousels || 0,
+    youtube_shorts: entry.youtubeShorts || 0,
+  })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(entry)
 }

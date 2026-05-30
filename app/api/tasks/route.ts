@@ -1,14 +1,9 @@
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 30
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
-import { getTasksFromSheet, saveTaskToSheet, deleteTaskFromSheet } from '@/lib/drive'
-import { Task } from '@/lib/types'
 import { randomUUID } from 'crypto'
-
-const HAS_DRIVE = !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY
 
 async function getUser(req: NextRequest) {
   const token = req.cookies.get('ms_session')?.value
@@ -19,37 +14,55 @@ async function getUser(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!HAS_DRIVE) return NextResponse.json([])
-  const tasks = await getTasksFromSheet()
-  if (user.role === 'designer') return NextResponse.json(tasks.filter(t => t.assignedTo === user.name))
-  return NextResponse.json(tasks)
+  const { getDB } = await import('@/lib/supabase')
+  const db = await getDB()
+  let query = db.from('makers_studio_tasks').select('*').order('created_at', { ascending: false })
+  if (user.role === 'designer') query = query.eq('assigned_to', user.name)
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
 }
 
 export async function POST(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
-  const task: Task = {
-    id: randomUUID(), clientId: body.clientId, clientName: body.clientName,
-    name: body.name, deliverableType: body.deliverableType, assignedTo: body.assignedTo,
-    deadline: body.deadline, brief: body.brief || '', createdAt: new Date().toISOString(), createdBy: user.name,
+  const { getDB } = await import('@/lib/supabase')
+  const db = await getDB()
+  const task = {
+    id: randomUUID(), client_id: body.clientId, client_name: body.clientName,
+    name: body.name, deliverable_type: body.deliverableType, assigned_to: body.assignedTo,
+    deadline: body.deadline, brief: body.brief || '',
+    created_at: new Date().toISOString(), created_by: user.name,
   }
-  if (HAS_DRIVE) await saveTaskToSheet(task)
+  const { error } = await db.from('makers_studio_tasks').insert(task)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(task)
 }
 
 export async function PUT(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const task: Task = await req.json()
-  if (HAS_DRIVE) await saveTaskToSheet(task)
-  return NextResponse.json(task)
+  const body = await req.json()
+  const { getDB } = await import('@/lib/supabase')
+  const db = await getDB()
+  const { error } = await db.from('makers_studio_tasks').upsert({
+    id: body.id, client_id: body.clientId, client_name: body.clientName,
+    name: body.name, deliverable_type: body.deliverableType, assigned_to: body.assignedTo,
+    deadline: body.deadline, brief: body.brief || '',
+    created_at: body.createdAt, created_by: body.createdBy,
+  })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(body)
 }
 
 export async function DELETE(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await req.json()
-  if (HAS_DRIVE) await deleteTaskFromSheet(id)
+  const { getDB } = await import('@/lib/supabase')
+  const db = await getDB()
+  const { error } = await db.from('makers_studio_tasks').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
