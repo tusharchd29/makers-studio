@@ -22,7 +22,7 @@ export default function PMDashboard() {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [sow, setSOW]                 = useState<SOWEntry[]>([])
   const [clients, setClients]         = useState<Client[]>([])
-  const [selectedMonth, setSelectedMonth] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }))
   const router = useRouter()
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export default function PMDashboard() {
       .sort().reverse(), [submissions])
 
   const currentMonth = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
-  const activeMonth  = selectedMonth || currentMonth
+  const activeMonth  = selectedMonth
 
   const [approvedFiles, setApprovedFiles] = useState<{clientName: string; sowMonth: string; deliverableType: string}[]>([])
 
@@ -77,14 +77,20 @@ export default function PMDashboard() {
 
   if (!user) return null
 
-  // Sort SOW by progress pct ascending (least done first)
+  const PRIORITY_ORDER = ['A', 'B', 'C', 'D']
   const sowWithProgress = sow
     .map((entry, i) => ({ entry, ...getSOWProgress(entry), color: BAR_COLORS[i % BAR_COLORS.length] }))
     .filter(e => {
       const client = clients.find(c => c.id === e.entry.clientId)
-      return !!client
+      return !!client && e.entry.status !== 'Inactive'
     })
-    .sort((a, b) => a.pct - b.pct)
+    .sort((a, b) => {
+      // Sort by priority first (A→D), then by progress ascending (least done first)
+      const pa = PRIORITY_ORDER.indexOf(a.entry.priority || 'D')
+      const pb = PRIORITY_ORDER.indexOf(b.entry.priority || 'D')
+      if (pa !== pb) return pa - pb
+      return a.pct - b.pct
+    })
 
   return (
     <>
@@ -94,9 +100,11 @@ export default function PMDashboard() {
         {/* Month selector */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ fontWeight: 700, fontSize: '16px' }}>{activeMonth}</div>
-          <select className="field-select" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={{ minWidth: '180px' }}>
-            <option value="">Current month</option>
-            {months.map(m => <option key={m}>{m}</option>)}
+          <select className="field-select" value={activeMonth} onChange={e => setSelectedMonth(e.target.value)} style={{ minWidth: '180px' }}>
+            {/* Always show current month first, then any past months from submissions */}
+            {[currentMonth, ...months.filter(m => m !== currentMonth)].map(m => (
+              <option key={m} value={m}>{m}{m === currentMonth ? ' (current)' : ''}</option>
+            ))}
           </select>
         </div>
 

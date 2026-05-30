@@ -18,9 +18,14 @@ export default function Topbar({ userName, userRole, designerType, activeTab, ta
     router.push('/')
   }
 
+  // Avatar: use first 2 chars of name, but if name is "PM" just show one letter
+  const avatarText = userName.length <= 2 ? userName.toUpperCase() : userName.slice(0, 2).toUpperCase()
+
+  // Role label: only show if it adds info beyond the name
+  const showRoleBadge = userRole === 'pm' && userName.toLowerCase() !== 'pm'
+
   return (
     <>
-      {/* Botanical background */}
       <div className="bg-botanical">
         <svg width="100%" height="100%" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
           <text x="780" y="430" textAnchor="middle" fontFamily="Dancing Script,cursive" fontSize="160" fontWeight="600" fill="#7DC242" opacity="0.07" transform="rotate(-12 780 500)">meraki</text>
@@ -45,10 +50,10 @@ export default function Topbar({ userName, userRole, designerType, activeTab, ta
         <div className="topbar">
           <span className="logo"><span className="lm">makers</span><span className="la">studio</span></span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {userRole === 'pm' && <span className="badge badge-pm">PM</span>}
-            {designerType === 'video' && <span className="badge badge-video">Video</span>}
+            {showRoleBadge && <span className="badge badge-pm">PM</span>}
+            {designerType === 'video'   && <span className="badge badge-video">Video</span>}
             {designerType === 'graphic' && <span className="badge badge-graphic">Graphic</span>}
-            <div className="avatar">{userName.slice(0, 2).toUpperCase()}</div>
+            <div className="avatar">{avatarText}</div>
             <span style={{ fontSize: '13px', fontWeight: 500 }}>{userName}</span>
             <button className="btn btn-sm" onClick={logout}><i className="ti ti-logout" /> Sign out</button>
           </div>
