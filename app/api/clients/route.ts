@@ -11,6 +11,10 @@ async function getUser(req: NextRequest) {
   return verifySession(token)
 }
 
+function toFrontend(r: Record<string, unknown>) {
+  return { id: r.id, name: r.name, driveFolderId: r.storage_folder || '' }
+}
+
 export async function GET(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -18,7 +22,7 @@ export async function GET(req: NextRequest) {
   const db = await getDB()
   const { data, error } = await db.from('makers_studio_clients').select('*').order('name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  return NextResponse.json((data || []).map(toFrontend))
 }
 
 export async function POST(req: NextRequest) {
@@ -30,7 +34,7 @@ export async function POST(req: NextRequest) {
   const client = { id: randomUUID(), name, storage_folder: '' }
   const { error } = await db.from('makers_studio_clients').insert(client)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(client)
+  return NextResponse.json(toFrontend(client))
 }
 
 export async function PUT(req: NextRequest) {
@@ -39,9 +43,10 @@ export async function PUT(req: NextRequest) {
   const client = await req.json()
   const { getDB } = await import('@/lib/supabase')
   const db = await getDB()
-  const { error } = await db.from('makers_studio_clients').upsert(client)
+  const row = { id: client.id, name: client.name, storage_folder: client.driveFolderId || '' }
+  const { error } = await db.from('makers_studio_clients').upsert(row)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(client)
+  return NextResponse.json(toFrontend(row))
 }
 
 export async function DELETE(req: NextRequest) {

@@ -30,7 +30,15 @@ export async function GET(req: NextRequest) {
   if (user.role === 'designer') query = query.eq('designer_name', user.name)
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  return NextResponse.json((data || []).map((r: Record<string, unknown>) => ({
+    id: r.id, taskId: r.task_id, taskName: r.task_name,
+    clientName: r.client_name, designerName: r.designer_name,
+    deliverableType: r.deliverable_type, fileType: r.file_type,
+    fileName: r.file_name, storagePath: r.storage_path,
+    viewUrl: r.view_url, version: r.version, status: r.status,
+    pmComment: r.pm_comment, checklist: r.checklist, notes: r.notes,
+    submittedAt: r.submitted_at, reviewedAt: r.reviewed_at, reviewedBy: r.reviewed_by,
+  })))
 }
 
 export async function POST(req: NextRequest) {
