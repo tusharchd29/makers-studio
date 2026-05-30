@@ -25,6 +25,7 @@ function SubmitForm() {
   const [uploadStep, setUploadStep] = useState('')
   const [result, setResult] = useState<{ storagePath: string; version: number; viewUrl: string } | null>(null)
   const [error, setError] = useState('')
+  const [subStatusMap, setSubStatusMap] = useState<Record<string, string>>({})
   const fileRef = useRef<HTMLInputElement>(null)
   const xhrRef  = useRef<XMLHttpRequest | null>(null)
   const router  = useRouter()
@@ -41,6 +42,16 @@ function SubmitForm() {
         setTasks(data)
         const tid = searchParams.get('taskId')
         if (tid) setSelectedTaskId(tid)
+      }
+    })
+    // Pre-load submission statuses to know which tasks are locked
+    fetch('/api/submissions').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) {
+        const map: Record<string, string> = {}
+        data.forEach((s: { taskId: string; status: string }) => {
+          if (!map[s.taskId]) map[s.taskId] = s.status
+        })
+        setSubStatusMap(map)
       }
     })
   }, [router, searchParams])
@@ -64,6 +75,7 @@ function SubmitForm() {
 
   async function submit() {
     if (!selectedTask || !file) { setError('Please select a task and upload a file.'); return }
+    if (subStatusMap[selectedTask.id] === 'pending') { setError('This task is already in review. Wait for PM feedback before resubmitting.'); return }
     setSubmitting(true); setError(''); setProgress(0); setUploadStep('Preparing…')
 
     try {
@@ -189,6 +201,11 @@ function SubmitForm() {
               </select>
             </div>
 
+            {selectedTask && subStatusMap[selectedTask.id] === 'pending' && (
+              <div style={{ padding: '10px 14px', background: '#ff9b4e15', border: '1px solid #ff9b4e40', borderRadius: '8px', marginBottom: '12px', fontSize: '12px', color: '#ff9b4e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ⏳ <strong>Awaiting PM review</strong> — you cannot resubmit until the PM responds.
+              </div>
+            )}
             {selectedTask && (
               <div className="card-sm" style={{ marginBottom: '14px' }}>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>

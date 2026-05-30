@@ -44,7 +44,7 @@ export default function MySubmissionsPage() {
       if (Array.isArray(data)) {
         setSubmissions(data)
         // For tasks in revision/rejected — fetch full revision history
-        const needsHistory = data.filter((s: {status: string; taskId: string}) => s.status === 'revision' || s.status === 'rejected')
+        const needsHistory = data.filter((s: {status: string; taskId: string; draftNumber: number}) => s.status === 'revision' || s.status === 'rejected' || s.draftNumber > 1)
         needsHistory.forEach((s: {taskId: string}) => {
           fetch(`/api/revisions?taskId=${s.taskId}`).then(r => r.json()).then(revs => {
             if (Array.isArray(revs)) {
@@ -117,6 +117,7 @@ export default function MySubmissionsPage() {
             {filtered.map(s => {
               const cfg = STATUS_CONFIG[s.status] || STATUS_CONFIG.pending
               const needsWork = s.status === 'revision' || s.status === 'rejected'
+              const isLocked   = s.status === 'pending'
               return (
                 <div key={s.id} className="card" style={{
                   padding: '16px',
@@ -208,7 +209,7 @@ export default function MySubmissionsPage() {
                   )}
 
                   {/* Resubmit CTA for revision/rejected */}
-                  {needsWork && (
+                  {needsWork && !isLocked && (
                     <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <a
                         href={`/designer/submit?taskId=${s.taskId}`}
@@ -224,6 +225,13 @@ export default function MySubmissionsPage() {
                           View Previous ↗
                         </a>
                       )}
+                    </div>
+                  )}
+
+                  {/* Locked — awaiting PM review */}
+                  {isLocked && (
+                    <div style={{ marginTop: '10px', padding: '8px 12px', background: '#ff9b4e15', border: '1px solid #ff9b4e40', borderRadius: '8px', fontSize: '12px', color: '#ff9b4e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      ⏳ Submitted — waiting for PM to review. You can't resubmit until PM responds.
                     </div>
                   )}
 

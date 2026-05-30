@@ -166,6 +166,10 @@ export default function DesignerTasksPage() {
               const sub = subMap[t.id]
               const status = sub?.status || 'not-submitted'
               const needsWork = status === 'revision' || status === 'rejected'
+              const canSubmit  = status === 'not-submitted' || needsWork
+              const isLocked   = status === 'pending'
+              const canSubmit  = status === 'not-submitted' || needsWork
+              const isLocked   = status === 'pending'
               return (
                 <div key={t.id} style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_META[status]?.color || 'transparent'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
@@ -187,10 +191,15 @@ export default function DesignerTasksPage() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', flexShrink: 0 }}>
                       <StatusPill s={status} />
-                      {(status === 'not-submitted' || needsWork) && (
+                      {canSubmit && (
                         <a href={`/designer/submit?taskId=${t.id}`} className={`btn btn-sm ${needsWork ? 'btn-warning' : 'btn-primary'}`} style={{ fontSize: '11px' }}>
                           {needsWork ? 'Resubmit' : 'Submit'}
                         </a>
+                      )}
+                      {isLocked && (
+                        <span style={{ fontSize: '11px', color: 'var(--text3)', padding: '4px 8px', background: 'var(--surface2)', borderRadius: '6px' }}>
+                          ⏳ Awaiting PM
+                        </span>
                       )}
                     </div>
                   </div>
