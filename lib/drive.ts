@@ -1,9 +1,9 @@
+// drive.ts — Google Sheets ONLY. Zero Supabase imports.
+// All Supabase storage logic lives in the API route (submissions/route.ts)
 import { google } from 'googleapis'
 import { SOWEntry, Task, Client } from './types'
 import { SEEDED_SOW } from './seedSOW'
-import { getSupabase, BUCKET } from './supabase'
 
-// ─── GOOGLE AUTH (Sheets only — Drive upload replaced by Supabase) ──
 function getAuth() {
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (!keyJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY not set')
@@ -14,9 +14,7 @@ function getAuth() {
     const fixed = keyJson.replace(/\\n/g, '\n')
     key = JSON.parse(fixed)
   }
-  if (key.private_key) {
-    key.private_key = key.private_key.replace(/\\n/g, '\n')
-  }
+  if (key.private_key) key.private_key = key.private_key.replace(/\\n/g, '\n')
   return new google.auth.GoogleAuth({
     credentials: key,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -30,7 +28,6 @@ export async function getSheets() {
 
 const SHEET_ID = process.env.SUBMISSIONS_SHEET_ID!
 
-// ─── SHEET SETUP ───────────────────────────────────────────────────
 async function ensureSheetTabs() {
   const sheets = await getSheets()
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID })
@@ -44,52 +41,15 @@ async function ensureSheetTabs() {
   })
   const headerData: { range: string; values: string[][] }[] = []
   if (toCreate.includes('Submissions')) headerData.push({ range: 'Submissions!A1:R1', values: [['id','taskId','taskName','clientName','designerName','deliverableType','fileType','fileName','version','status','pmComment','checklist','notes','storagePath','viewUrl','submittedAt','reviewedAt','reviewedBy']] })
-  if (toCreate.includes('Tasks')) headerData.push({ range: 'Tasks!A1:J1', values: [['id','clientId','clientName','name','deliverableType','assignedTo','deadline','brief','createdAt','createdBy']] })
-  if (toCreate.includes('SOW')) headerData.push({ range: 'SOW!A1:H1', values: [['clientId','reels','stories','statics','videos','photos','carousels','youtubeShorts']] })
-  if (toCreate.includes('Clients')) headerData.push({ range: 'Clients!A1:C1', values: [['id','name','storageFolder']] })
+  if (toCreate.includes('Tasks'))       headerData.push({ range: 'Tasks!A1:J1',       values: [['id','clientId','clientName','name','deliverableType','assignedTo','deadline','brief','createdAt','createdBy']] })
+  if (toCreate.includes('SOW'))         headerData.push({ range: 'SOW!A1:H1',         values: [['clientId','reels','stories','statics','videos','photos','carousels','youtubeShorts']] })
+  if (toCreate.includes('Clients'))     headerData.push({ range: 'Clients!A1:C1',     values: [['id','name','storageFolder']] })
   if (headerData.length > 0) {
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,
       requestBody: { valueInputOption: 'RAW', data: headerData },
     })
   }
-}
-
-// ─── SUPABASE STORAGE UPLOAD ───────────────────────────────────────
-export async function uploadFileToStorage(
-  buffer: Buffer,
-  storagePath: string,
-  mimeType: string
-): Promise<{ storagePath: string; viewUrl: string }> {
-  const sb = await getSupabase()
-  const { error } = await sb.storage
-    .from(BUCKET)
-    .upload(storagePath, buffer, {
-      contentType: mimeType,
-      upsert: false,
-    })
-
-  if (error) throw new Error(`Storage upload failed: ${error.message}`)
-
-  // Generate a signed URL valid for 10 years (max allowed)
-  const { data: signedData, error: signErr } = await (await getSupabase()).storage
-    .from(BUCKET)
-    .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10)
-
-  if (signErr || !signedData) throw new Error(`Failed to get signed URL: ${signErr?.message}`)
-
-  return { storagePath, viewUrl: signedData.signedUrl }
-}
-
-export async function getNextVersion(clientName: string, taskName: string, month: string, fileType: string): Promise<number> {
-  const prefix = `${clientName}/${month}/${fileType}/${taskName} - v`
-  const { data } = await (await getSupabase()).storage.from(BUCKET).list(`${clientName}/${month}/${fileType}`, {
-    search: taskName,
-  })
-  if (!data || data.length === 0) return 1
-  const versions = data
-    .map(f => { const m = f.name.match(/- v(\d+)/); return m ? parseInt(m[1]) : 0 })
-  return versions.length > 0 ? Math.max(...versions) + 1 : 1
 }
 
 // ─── SUBMISSIONS ───────────────────────────────────────────────────
@@ -187,10 +147,7 @@ export async function getSOWFromSheet(): Promise<SOWEntry[]> {
   const sheets = await getSheets()
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'SOW!A:H' })
   const rows = res.data.values || []
-  if (rows.length < 2) {
-    await seedSOW(sheets)
-    return SEEDED_SOW
-  }
+  if (rows.length < 2) { await seedSOW(sheets); return SEEDED_SOW }
   return rows.slice(1).map(r => ({
     clientId: r[0], reels: parseInt(r[1]) || 0, stories: parseInt(r[2]) || 0,
     statics: parseInt(r[3]) || 0, videos: parseInt(r[4]) || 0,
