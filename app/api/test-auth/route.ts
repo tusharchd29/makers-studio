@@ -4,15 +4,14 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
-  const url = process.env.SUPABASE_URL || ''
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-  return NextResponse.json({
-    supabase_url_set: !!url,
-    supabase_url_length: url.length,
-    supabase_url_starts: url.slice(0, 30),
-    supabase_url_charCodes: [...url.slice(0, 10)].map(c => c.charCodeAt(0)),
-    key_set: !!key,
-    key_length: key.length,
-    key_starts: key.slice(0, 20),
-  })
+  try {
+    const url = process.env.SUPABASE_URL!
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const { createClient } = await import('@supabase/supabase-js')
+    const db = createClient(url, key, { auth: { persistSession: false } })
+    const { data, error } = await db.from('makers_studio_clients').select('name').limit(5)
+    return NextResponse.json({ ok: !error, error: error?.message, clients: data })
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: String(err) })
+  }
 }
