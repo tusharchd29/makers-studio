@@ -28,7 +28,10 @@ export default function MySubmissionsPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
   const router = useRouter()
+
+  const [revisions, setRevisions] = useState<Record<string, {draftNumber: number; viewUrl: string; fileName: string; pmComment: string; status: string; submittedAt: string}[]>>({})
 
   useEffect(() => {
     const stored = localStorage.getItem('ms_user')
@@ -37,7 +40,18 @@ export default function MySubmissionsPage() {
     if (u.role !== 'designer') { router.push('/pm/dashboard'); return }
     setUser(u)
     fetch('/api/submissions').then(r => r.json()).then(data => {
-      if (Array.isArray(data)) setSubmissions(data)
+      if (Array.isArray(data)) {
+        setSubmissions(data)
+        // For tasks in revision/rejected — fetch full revision history
+        const needsHistory = data.filter((s: {status: string; taskId: string}) => s.status === 'revision' || s.status === 'rejected')
+        needsHistory.forEach((s: {taskId: string}) => {
+          fetch(`/api/revisions?taskId=${s.taskId}`).then(r => r.json()).then(revs => {
+            if (Array.isArray(revs)) {
+              setRevisions(prev => ({ ...prev, [s.taskId]: revs }))
+            }
+          })
+        })
+      }
       setLoading(false)
     })
   }, [router])
@@ -146,6 +160,49 @@ export default function MySubmissionsPage() {
                       <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
                         {s.pmComment}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Draft history for revision tasks */}
+                  {needsWork && revisions[s.taskId] && revisions[s.taskId].length > 1 && (
+                    <div style={{ marginTop: '10px' }}>
+                      <button
+                        onClick={() => setExpandedHistory(expandedHistory === s.taskId ? null : s.taskId)}
+                        style={{ fontSize: '11px', color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                      >
+                        {expandedHistory === s.taskId ? 'Hide' : 'Show'} all {revisions[s.taskId].length} drafts
+                      </button>
+                      {expandedHistory === s.taskId && (
+                        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {revisions[s.taskId].map(rev => (
+                            <div key={rev.draftNumber} style={{
+                              padding: '8px 10px', borderRadius: '8px',
+                              background: rev.draftNumber === s.draftNumber ? 'var(--surface2)' : 'transparent',
+                              border: '1px solid var(--border)', fontSize: '12px',
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: rev.pmComment ? '4px' : 0 }}>
+                                <span style={{ fontWeight: 700 }}>Draft {rev.draftNumber}</span>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '11px', color: 'var(--text3)' }}>
+                                    {new Date(rev.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                  </span>
+                                  {rev.viewUrl && (
+                                    <a href={rev.viewUrl} target="_blank" rel="noreferrer"
+                                      style={{ fontSize: '11px', color: 'var(--accent)', textDecoration: 'none' }}>
+                                      View ↗
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                              {rev.pmComment && (
+                                <div style={{ fontSize: '11px', color: STATUS_CONFIG[rev.status]?.color || 'var(--text3)', marginTop: '3px' }}>
+                                  PM: {rev.pmComment}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -38,14 +38,13 @@ export async function GET(req: NextRequest) {
   return NextResponse.json((data || []).map(toFrontend))
 }
 
-// POST — new draft submission (one active draft per task at a time)
+// POST — new draft: always adds a new version, never deletes anything
 export async function POST(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'designer') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
   const { taskId, taskName, clientId, deliverableType, checklist, notes: designerNote, storagePath, fileName, fileType, version } = body
-
   if (!storagePath || !taskId) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
   const { getDB } = await import('@/lib/supabase')
@@ -54,7 +53,6 @@ export async function POST(req: NextRequest) {
   const { data: clientData } = await db.from('makers_studio_clients').select('name').eq('id', clientId).single()
   if (!clientData) return NextResponse.json({ error: 'Client not found' }, { status: 400 })
 
-  // Get existing submission row for this task
   const { data: existing } = await db.from('makers_studio_submissions')
     .select('id, draft_number').eq('task_id', taskId).single()
 
@@ -65,24 +63,22 @@ export async function POST(req: NextRequest) {
     .from(BUCKET).createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10)
   if (signErr || !signedData) return NextResponse.json({ error: `Signed URL failed: ${signErr?.message}` }, { status: 500 })
 
-  const viewUrl = signedData.signedUrl
+  const viewUrl      = signedData.signedUrl
   const submissionId = existing?.id as string || randomUUID()
-  const now = new Date().toISOString()
+  const now          = new Date().toISOString()
 
-  // Upsert single submission row (one per task — always latest draft)
-  const { error: upsertErr } = await db.from('makers_studio_submissions').upsert({
+  // Upsert submission row — always points to the LATEST draft
+  await db.from('makers_studio_submissions').upsert({
     id: submissionId, task_id: taskId, task_name: taskName,
     client_name: clientData.name, designer_name: user.name,
     deliverable_type: deliverableType, file_type: fileType,
     file_name: fileName, storage_path: storagePath,
     view_url: viewUrl, draft_number: draftNumber,
     status: 'pending', designer_note: designerNote || '',
-    pm_comment: '', submitted_at: now,
-    reviewed_at: null, reviewed_by: '',
+    pm_comment: '', submitted_at: now, reviewed_at: null, reviewed_by: '',
   })
-  if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 })
 
-  // Append to revision log (append-only — full history for Excel export)
+  // Append to revision log — full history forever
   await db.from('makers_studio_revisions').insert({
     id: randomUUID(), task_id: taskId, task_name: taskName,
     client_name: clientData.name, designer_name: user.name,
@@ -94,7 +90,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ id: submissionId, viewUrl, storagePath, draftNumber, fileName })
 }
 
-// PUT — PM review action
+// PUT — PM review
 export async function PUT(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -108,19 +104,18 @@ export async function PUT(req: NextRequest) {
 
   const now = new Date().toISOString()
 
-  // Update submission status + PM comment
+  // Update current submission
   await db.from('makers_studio_submissions').update({
-    status, pm_comment: pmComment || '',
-    reviewed_at: now, reviewed_by: user.name,
+    status, pm_comment: pmComment || '', reviewed_at: now, reviewed_by: user.name,
   }).eq('id', submissionId)
 
-  // Update revision log for this specific draft
+  // Update this draft's revision log entry
   await db.from('makers_studio_revisions').update({
     pm_comment: pmComment || '', status, reviewed_at: now, reviewed_by: user.name,
   }).eq('task_id', sub.task_id).eq('draft_number', sub.draft_number)
 
   if (status === 'approved') {
-    // Save to approved_files permanently
+    // Save to approved_files permanently (latest draft = approved version)
     const { data: taskData } = await db.from('makers_studio_tasks')
       .select('sow_month, deliverable_type').eq('id', sub.task_id).single()
 
@@ -128,25 +123,40 @@ export async function PUT(req: NextRequest) {
       id: randomUUID(), task_id: sub.task_id,
       task_name: sub.task_name, client_name: sub.client_name,
       designer_name: sub.designer_name,
-      sow_month: taskData?.sow_month || now.slice(0, 7),
+      sow_month: taskData?.sow_month || '',
       deliverable_type: taskData?.deliverable_type || sub.deliverable_type,
       storage_path: sub.storage_path, view_url: sub.view_url,
       total_drafts: sub.draft_number,
       approved_at: now, approved_by: user.name,
     }, { onConflict: 'task_id' })
 
-    // Delete all PREVIOUS draft files — keep only the approved (current) one
-    const { data: allDrafts } = await db.from('makers_studio_revisions')
+    // Delete all PREVIOUS drafts from storage — keep only the approved one
+    const { data: allRevisions } = await db.from('makers_studio_revisions')
       .select('storage_path, draft_number').eq('task_id', sub.task_id)
 
-    if (allDrafts && allDrafts.length > 0) {
-      const currentPath = sub.storage_path as string
-      const oldPaths = allDrafts
-        .map((d: Record<string, unknown>) => d.storage_path as string)
-        .filter(p => p && p !== currentPath) // keep the approved file, delete old drafts
+    if (allRevisions) {
+      const approvedPath  = sub.storage_path as string
+      const previousPaths = allRevisions
+        .map((r: Record<string, unknown>) => r.storage_path as string)
+        .filter(p => p && p !== approvedPath)
 
-      if (oldPaths.length > 0) {
-        await db.storage.from(BUCKET).remove(oldPaths)
+      if (previousPaths.length > 0) {
+        await db.storage.from(BUCKET).remove(previousPaths)
+      }
+    }
+  }
+
+  if (status === 'rejected') {
+    // Task is closed — delete ALL drafts from storage (rejected = nothing approved)
+    const { data: allRevisions } = await db.from('makers_studio_revisions')
+      .select('storage_path').eq('task_id', sub.task_id)
+
+    if (allRevisions) {
+      const allPaths = allRevisions
+        .map((r: Record<string, unknown>) => r.storage_path as string)
+        .filter(Boolean)
+      if (allPaths.length > 0) {
+        await db.storage.from(BUCKET).remove(allPaths)
       }
     }
   }

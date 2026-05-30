@@ -71,7 +71,7 @@ function FilePreview({ s }: { s: Submission }) {
   )
 }
 
-function SubmissionCard({ s, onReview }: { s: Submission; onReview: (id: string, status: string, comment: string) => Promise<void> }) {
+function SubmissionCard({ s, onReview, drafts }: { s: Submission; onReview: (id: string, status: string, comment: string) => Promise<void>; drafts?: {draftNumber: number; viewUrl: string; fileName: string; pmComment: string; designerNote: string; submittedAt: string; status: string}[] }) {
   const [commenting, setCommenting] = useState(false)
   const [action, setAction] = useState<'revision' | 'rejected' | null>(null)
   const [comment, setComment] = useState('')
@@ -123,6 +123,43 @@ function SubmissionCard({ s, onReview }: { s: Submission; onReview: (id: string,
 
       {/* File preview */}
       <FilePreview s={s} />
+
+      {/* Previous drafts — PM can compare all versions */}
+      {drafts && drafts.length > 1 && (
+        <div style={{ marginTop: '10px', padding: '10px 12px', background: 'var(--surface2)', borderRadius: '8px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+            Draft History ({drafts.length} versions)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {drafts.map(d => (
+              <div key={d.draftNumber} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '6px 8px',
+                borderRadius: '6px', border: '1px solid var(--border)',
+                background: d.draftNumber === s.draftNumber ? '#5b9cf610' : 'transparent',
+              }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: d.draftNumber === s.draftNumber ? '#5b9cf6' : 'var(--text3)', minWidth: '54px' }}>
+                  Draft {d.draftNumber}{d.draftNumber === s.draftNumber ? ' ★' : ''}
+                </span>
+                <div style={{ flex: 1, fontSize: '11px', color: 'var(--text2)' }}>
+                  {d.designerNote && <div style={{ fontStyle: 'italic', marginBottom: '2px' }}>Designer: {d.designerNote}</div>}
+                  {d.pmComment && <div style={{ color: STATUS_META[d.status]?.color || 'var(--text3)' }}>PM: {d.pmComment}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text3)' }}>
+                    {new Date(d.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </span>
+                  {d.viewUrl && (
+                    <a href={d.viewUrl} target="_blank" rel="noreferrer"
+                      style={{ fontSize: '11px', color: 'var(--accent)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                      View ↗
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Previous PM comment */}
       {s.pmComment && (
@@ -176,6 +213,8 @@ export default function PMReviewPage() {
   const [groupBy, setGroupBy]     = useState<'none' | 'client' | 'month'>('client')
   const router = useRouter()
 
+  const [revisions, setRevisions] = useState<Record<string, {draftNumber: number; viewUrl: string; fileName: string; pmComment: string; designerNote: string; status: string; submittedAt: string}[]>>({})
+
   useEffect(() => {
     const stored = localStorage.getItem('ms_user')
     if (!stored) { router.push('/'); return }
@@ -183,7 +222,17 @@ export default function PMReviewPage() {
     if (u.role !== 'pm') { router.push('/designer/tasks'); return }
     setUser(u)
     fetch('/api/submissions').then(r => r.json()).then(data => {
-      if (Array.isArray(data)) setSubmissions(data)
+      if (Array.isArray(data)) {
+        setSubmissions(data)
+        // Fetch revision history for all tasks with multiple drafts
+        data.forEach((s: {taskId: string; draftNumber: number}) => {
+          if (s.draftNumber > 1) {
+            fetch(`/api/revisions?taskId=${s.taskId}`).then(r => r.json()).then(revs => {
+              if (Array.isArray(revs)) setRevisions(prev => ({ ...prev, [s.taskId]: revs }))
+            })
+          }
+        })
+      }
       setLoading(false)
     })
   }, [router])
@@ -339,7 +388,7 @@ export default function PMReviewPage() {
               )}
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 {items.map(s => (
-                  <SubmissionCard key={s.id} s={s} onReview={handleReview} />
+                  <SubmissionCard key={s.id} s={s} onReview={handleReview} drafts={revisions[s.taskId]} />
                 ))}
               </div>
             </div>
