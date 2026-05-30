@@ -6,7 +6,21 @@ import { SEEDED_SOW } from './seedSOW'
 function getAuth() {
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (!keyJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY not set')
-  const key = JSON.parse(keyJson)
+
+  let key: Record<string, string>
+  try {
+    key = JSON.parse(keyJson)
+  } catch {
+    // Vercel sometimes double-escapes newlines in env vars — fix it
+    const fixed = keyJson.replace(/\\n/g, '\n')
+    key = JSON.parse(fixed)
+  }
+
+  // Make sure private_key has real newlines, not escaped \n
+  if (key.private_key) {
+    key.private_key = key.private_key.replace(/\\n/g, '\n')
+  }
+
   return new google.auth.GoogleAuth({
     credentials: key,
     scopes: [
@@ -28,12 +42,7 @@ export async function getSheets() {
 
 const SHEET_ID = process.env.SUBMISSIONS_SHEET_ID!
 
-// ─── SHEET TABS ────────────────────────────────────────────────────
-// Tab 1: Submissions   (columns A:R)
-// Tab 2: Tasks         (columns A:J)
-// Tab 3: SOW           (columns A:H)
-// Tab 4: Clients       (columns A:C)
-
+// Ensure all 4 tabs exist with headers
 async function ensureSheetTabs() {
   const sheets = await getSheets()
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID })
@@ -43,24 +52,13 @@ async function ensureSheetTabs() {
   if (toCreate.length === 0) return
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId: SHEET_ID,
-    requestBody: {
-      requests: toCreate.map(title => ({ addSheet: { properties: { title } } })),
-    },
+    requestBody: { requests: toCreate.map(title => ({ addSheet: { properties: { title } } })) },
   })
-  // Add headers
-  const headerData = []
-  if (toCreate.includes('Submissions')) {
-    headerData.push({ range: 'Submissions!A1:R1', values: [['id','taskId','taskName','clientName','designerName','deliverableType','fileType','fileName','version','status','pmComment','checklist','notes','drivePath','driveViewUrl','submittedAt','reviewedAt','reviewedBy']] })
-  }
-  if (toCreate.includes('Tasks')) {
-    headerData.push({ range: 'Tasks!A1:J1', values: [['id','clientId','clientName','name','deliverableType','assignedTo','deadline','brief','createdAt','createdBy']] })
-  }
-  if (toCreate.includes('SOW')) {
-    headerData.push({ range: 'SOW!A1:H1', values: [['clientId','reels','stories','statics','videos','photos','carousels','youtubeShorts']] })
-  }
-  if (toCreate.includes('Clients')) {
-    headerData.push({ range: 'Clients!A1:C1', values: [['id','name','driveFolderId']] })
-  }
+  const headerData: { range: string; values: string[][] }[] = []
+  if (toCreate.includes('Submissions')) headerData.push({ range: 'Submissions!A1:R1', values: [['id','taskId','taskName','clientName','designerName','deliverableType','fileType','fileName','version','status','pmComment','checklist','notes','drivePath','driveViewUrl','submittedAt','reviewedAt','reviewedBy']] })
+  if (toCreate.includes('Tasks')) headerData.push({ range: 'Tasks!A1:J1', values: [['id','clientId','clientName','name','deliverableType','assignedTo','deadline','brief','createdAt','createdBy']] })
+  if (toCreate.includes('SOW')) headerData.push({ range: 'SOW!A1:H1', values: [['clientId','reels','stories','statics','videos','photos','carousels','youtubeShorts']] })
+  if (toCreate.includes('Clients')) headerData.push({ range: 'Clients!A1:C1', values: [['id','name','driveFolderId']] })
   if (headerData.length > 0) {
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,
@@ -69,7 +67,7 @@ async function ensureSheetTabs() {
   }
 }
 
-// ─── DRIVE HELPERS ─────────────────────────────────────────────────
+// ─── DRIVE ─────────────────────────────────────────────────────────
 export async function getOrCreateFolder(drive: ReturnType<typeof google.drive>, name: string, parentId: string): Promise<string> {
   const res = await drive.files.list({
     q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
@@ -94,8 +92,9 @@ export async function uploadFileToDrive(drive: ReturnType<typeof google.drive>, 
 }
 
 export async function getNextVersion(drive: ReturnType<typeof google.drive>, taskName: string, parentId: string): Promise<number> {
+  const safeName = taskName.replace(/'/g, "\\'")
   const res = await drive.files.list({
-    q: `name contains '${taskName} - v' and '${parentId}' in parents and trashed=false`,
+    q: `name contains '${safeName} - v' and '${parentId}' in parents and trashed=false`,
     fields: 'files(name)',
   })
   const files = res.data.files || []
@@ -123,15 +122,12 @@ export async function updateSubmissionStatus(submissionId: string, status: strin
   const row = rowIndex + 1
   await sheets.spreadsheets.values.batchUpdate({
     spreadsheetId: SHEET_ID,
-    requestBody: {
-      valueInputOption: 'RAW',
-      data: [
-        { range: `Submissions!J${row}`, values: [[status]] },
-        { range: `Submissions!K${row}`, values: [[pmComment]] },
-        { range: `Submissions!Q${row}`, values: [[new Date().toISOString()]] },
-        { range: `Submissions!R${row}`, values: [[reviewedBy]] },
-      ],
-    },
+    requestBody: { valueInputOption: 'RAW', data: [
+      { range: `Submissions!J${row}`, values: [[status]] },
+      { range: `Submissions!K${row}`, values: [[pmComment]] },
+      { range: `Submissions!Q${row}`, values: [[new Date().toISOString()]] },
+      { range: `Submissions!R${row}`, values: [[reviewedBy]] },
+    ]},
   })
 }
 
@@ -169,17 +165,11 @@ export async function saveTaskToSheet(task: Task) {
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Tasks!A:A' })
   const rows = res.data.values || []
   const rowIndex = rows.findIndex(r => r[0] === task.id)
+  const values = [[task.id, task.clientId, task.clientName, task.name, task.deliverableType, task.assignedTo, task.deadline, task.brief, task.createdAt, task.createdBy]]
   if (rowIndex >= 1) {
-    const row = rowIndex + 1
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID, range: `Tasks!A${row}:J${row}`, valueInputOption: 'RAW',
-      requestBody: { values: [[task.id, task.clientId, task.clientName, task.name, task.deliverableType, task.assignedTo, task.deadline, task.brief, task.createdAt, task.createdBy]] },
-    })
+    await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: `Tasks!A${rowIndex + 1}:J${rowIndex + 1}`, valueInputOption: 'RAW', requestBody: { values } })
   } else {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID, range: 'Tasks!A:J', valueInputOption: 'RAW',
-      requestBody: { values: [[task.id, task.clientId, task.clientName, task.name, task.deliverableType, task.assignedTo, task.deadline, task.brief, task.createdAt, task.createdBy]] },
-    })
+    await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: 'Tasks!A:J', valueInputOption: 'RAW', requestBody: { values } })
   }
 }
 
@@ -193,10 +183,7 @@ export async function deleteTaskFromSheet(id: string) {
   const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID })
   const tasksSheet = sheetMeta.data.sheets?.find(s => s.properties?.title === 'Tasks')
   if (!tasksSheet) return
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SHEET_ID,
-    requestBody: { requests: [{ deleteDimension: { range: { sheetId: tasksSheet.properties!.sheetId!, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 } } }] },
-  })
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId: SHEET_ID, requestBody: { requests: [{ deleteDimension: { range: { sheetId: tasksSheet.properties!.sheetId!, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 } } }] } })
 }
 
 // ─── SOW ───────────────────────────────────────────────────────────
@@ -206,7 +193,6 @@ export async function getSOWFromSheet(): Promise<SOWEntry[]> {
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'SOW!A:H' })
   const rows = res.data.values || []
   if (rows.length < 2) {
-    // First time — seed from Postings SOW
     await seedSOW(sheets)
     return SEEDED_SOW
   }
@@ -219,10 +205,7 @@ export async function getSOWFromSheet(): Promise<SOWEntry[]> {
 
 async function seedSOW(sheets: ReturnType<typeof google.sheets>) {
   const rows = SEEDED_SOW.map(s => [s.clientId, s.reels, s.stories, s.statics, s.videos, s.photos, s.carousels, s.youtubeShorts])
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SHEET_ID, range: 'SOW!A:H', valueInputOption: 'RAW',
-    requestBody: { values: rows },
-  })
+  await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: 'SOW!A:H', valueInputOption: 'RAW', requestBody: { values: rows } })
 }
 
 export async function saveSOWToSheet(entry: SOWEntry) {
@@ -233,16 +216,9 @@ export async function saveSOWToSheet(entry: SOWEntry) {
   const rowIndex = rows.findIndex(r => r[0] === entry.clientId)
   const values = [[entry.clientId, entry.reels, entry.stories, entry.statics, entry.videos, entry.photos, entry.carousels, entry.youtubeShorts]]
   if (rowIndex >= 1) {
-    const row = rowIndex + 1
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID, range: `SOW!A${row}:H${row}`, valueInputOption: 'RAW',
-      requestBody: { values },
-    })
+    await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: `SOW!A${rowIndex + 1}:H${rowIndex + 1}`, valueInputOption: 'RAW', requestBody: { values } })
   } else {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID, range: 'SOW!A:H', valueInputOption: 'RAW',
-      requestBody: { values },
-    })
+    await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: 'SOW!A:H', valueInputOption: 'RAW', requestBody: { values } })
   }
 }
 
@@ -253,12 +229,8 @@ export async function getClientsFromSheet(): Promise<Client[]> {
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Clients!A:C' })
   const rows = res.data.values || []
   if (rows.length < 2) {
-    // Seed default clients
     const { CLIENTS } = await import('./types')
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID, range: 'Clients!A:C', valueInputOption: 'RAW',
-      requestBody: { values: CLIENTS.map(c => [c.id, c.name, c.driveFolderId || '']) },
-    })
+    await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: 'Clients!A:C', valueInputOption: 'RAW', requestBody: { values: CLIENTS.map(c => [c.id, c.name, c.driveFolderId || '']) } })
     return CLIENTS
   }
   return rows.slice(1).map(r => ({ id: r[0], name: r[1], driveFolderId: r[2] || undefined }))
@@ -272,15 +244,9 @@ export async function saveClientToSheet(client: Client) {
   const rowIndex = rows.findIndex(r => r[0] === client.id)
   const values = [[client.id, client.name, client.driveFolderId || '']]
   if (rowIndex >= 1) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID, range: `Clients!A${rowIndex + 1}:C${rowIndex + 1}`, valueInputOption: 'RAW',
-      requestBody: { values },
-    })
+    await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: `Clients!A${rowIndex + 1}:C${rowIndex + 1}`, valueInputOption: 'RAW', requestBody: { values } })
   } else {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID, range: 'Clients!A:C', valueInputOption: 'RAW',
-      requestBody: { values },
-    })
+    await sheets.spreadsheets.values.append({ spreadsheetId: SHEET_ID, range: 'Clients!A:C', valueInputOption: 'RAW', requestBody: { values } })
   }
 }
 
@@ -294,8 +260,5 @@ export async function deleteClientFromSheet(id: string) {
   const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID })
   const clientsSheet = sheetMeta.data.sheets?.find(s => s.properties?.title === 'Clients')
   if (!clientsSheet) return
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SHEET_ID,
-    requestBody: { requests: [{ deleteDimension: { range: { sheetId: clientsSheet.properties!.sheetId!, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 } } }] },
-  })
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId: SHEET_ID, requestBody: { requests: [{ deleteDimension: { range: { sheetId: clientsSheet.properties!.sheetId!, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 } } }] } })
 }
