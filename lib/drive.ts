@@ -71,10 +71,13 @@ async function ensureSheetTabs() {
 export async function getOrCreateFolder(drive: ReturnType<typeof google.drive>, name: string, parentId: string): Promise<string> {
   const res = await drive.files.list({
     q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
     fields: 'files(id)',
   })
   if (res.data.files && res.data.files.length > 0) return res.data.files[0].id!
   const created = await drive.files.create({
+    supportsAllDrives: true,
     requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
     fields: 'id',
   })
@@ -82,13 +85,43 @@ export async function getOrCreateFolder(drive: ReturnType<typeof google.drive>, 
 }
 
 export async function uploadFileToDrive(drive: ReturnType<typeof google.drive>, buffer: Buffer, fileName: string, mimeType: string, parentId: string): Promise<{ id: string; viewUrl: string }> {
-  const stream = Readable.from(buffer)
-  const res = await drive.files.create({
-    requestBody: { name: fileName, parents: [parentId] },
-    media: { mimeType, body: stream },
-    fields: 'id, webViewLink',
-  })
-  return { id: res.data.id!, viewUrl: res.data.webViewLink! }
+  // Use raw multipart upload via fetch — works with personal Drive folders shared with service accounts
+  // The googleapis SDK stream upload fails with "Service Accounts do not have storage quota"
+  const auth = (drive as unknown as { _options: { auth: { getAccessToken: () => Promise<{ token: string }> } } })._options.auth
+  const tokenRes = await auth.getAccessToken()
+  const accessToken = tokenRes.token
+
+  const metadata = JSON.stringify({ name: fileName, parents: [parentId] })
+  const boundary = 'makers_studio_boundary_' + Date.now()
+
+  const bodyParts: Buffer[] = [
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`),
+    Buffer.from(metadata),
+    Buffer.from(`\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`),
+    buffer,
+    Buffer.from(`\r\n--${boundary}--`),
+  ]
+  const body = Buffer.concat(bodyParts)
+
+  const res = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary="${boundary}"`,
+      },
+      body,
+    }
+  )
+
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Drive upload failed (${res.status}): ${errText}`)
+  }
+
+  const data = await res.json() as { id: string; webViewLink: string }
+  return { id: data.id, viewUrl: data.webViewLink }
 }
 
 export async function getNextVersion(drive: ReturnType<typeof google.drive>, taskName: string, parentId: string): Promise<number> {
