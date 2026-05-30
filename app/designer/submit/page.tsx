@@ -5,9 +5,9 @@ import Topbar from '@/components/Topbar'
 import { Task, CHECKLIST_ITEMS } from '@/lib/types'
 
 const DESIGNER_TABS = [
-  { label: 'My Tasks', href: '/designer/tasks' },
-  { label: 'Submit Work', href: '/designer/submit' },
-  { label: 'My Submissions', href: '/designer/submissions' },
+  { label: 'My Tasks', href: '/designer/tasks', icon: 'ti-list-check' },
+  { label: 'Submit Work', href: '/designer/submit', icon: 'ti-upload' },
+  { label: 'My Submissions', href: '/designer/submissions', icon: 'ti-history' },
 ]
 
 function SubmitForm() {

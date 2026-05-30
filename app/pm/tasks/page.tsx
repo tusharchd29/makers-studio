@@ -5,11 +5,11 @@ import Topbar from '@/components/Topbar'
 import { Task, DELIVERABLE_TYPES } from '@/lib/types'
 
 const PM_TABS = [
-  { label: 'Dashboard', href: '/pm/dashboard' },
-  { label: 'Review Queue', href: '/pm/review' },
-  { label: 'Tasks', href: '/pm/tasks' },
-  { label: 'SOW', href: '/pm/sow' },
-  { label: 'Clients', href: '/pm/clients' },
+  { label: 'Dashboard', href: '/pm/dashboard', icon: 'ti-layout-dashboard' },
+  { label: 'Review Queue', href: '/pm/review', icon: 'ti-eye-check' },
+  { label: 'Tasks', href: '/pm/tasks', icon: 'ti-checklist' },
+  { label: 'SOW', href: '/pm/sow', icon: 'ti-file-description' },
+  { label: 'Clients', href: '/pm/clients', icon: 'ti-building' },
 ]
 
 interface Client { id: string; name: string }
