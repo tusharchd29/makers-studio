@@ -85,10 +85,11 @@ export async function getOrCreateFolder(drive: ReturnType<typeof google.drive>, 
 }
 
 export async function uploadFileToDrive(drive: ReturnType<typeof google.drive>, buffer: Buffer, fileName: string, mimeType: string, parentId: string): Promise<{ id: string; viewUrl: string }> {
-  // Use raw multipart upload via fetch — works with personal Drive folders shared with service accounts
-  // The googleapis SDK stream upload fails with "Service Accounts do not have storage quota"
-  const auth = (drive as unknown as { _options: { auth: { getAccessToken: () => Promise<{ token: string }> } } })._options.auth
-  const tokenRes = await auth.getAccessToken()
+  // Use raw multipart upload — SDK stream fails with service account quota error
+  // Get token directly from a fresh GoogleAuth instance
+  const auth = getAuth()
+  const client = await auth.getClient()
+  const tokenRes = await client.getAccessToken()
   const accessToken = tokenRes.token
 
   const metadata = JSON.stringify({ name: fileName, parents: [parentId] })
