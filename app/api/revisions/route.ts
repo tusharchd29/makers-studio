@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   }))
 
   const filtered = month
-    ? rows.filter(r => new Date(r.submittedAt).toLocaleString('en-US', { month: 'long', year: 'numeric' }) === month)
+    ? rows.filter(r => new Date(r.submittedAt as string).toLocaleString('en-US', { month: 'long', year: 'numeric' }) === month)
     : rows
 
   return NextResponse.json(filtered)
