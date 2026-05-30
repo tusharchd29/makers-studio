@@ -14,8 +14,8 @@ const PM_TABS = [
 interface Submission {
   id: string; taskId: string; taskName: string; clientName: string; designerName: string
   deliverableType: string; fileType: string; fileName: string; version: string
-  status: string; pmComment: string; viewUrl: string; storagePath: string
-  checklist: string; notes: string; submittedAt: string
+  draftNumber: number; status: string; pmComment: string; designerNote: string
+  viewUrl: string; storagePath: string; checklist: string; notes: string; submittedAt: string
 }
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
