@@ -10,20 +10,24 @@ const DESIGNER_TABS = [
 ]
 
 interface Submission {
-  id: string; taskName: string; clientName: string; deliverableType: string
-  fileType: string; fileName: string; version: string; status: string
-  pmComment: string; storagePath: string; viewUrl: string; submittedAt: string
+  id: string; taskId: string; taskName: string; clientName: string
+  deliverableType: string; fileType: string; fileName: string
+  version: string; status: string; pmComment: string
+  storagePath: string; viewUrl: string; submittedAt: string; notes: string
 }
 
-function StatusBadge({ s }: { s: string }) {
-  const map: Record<string, string> = { pending: 'badge-pending', approved: 'badge-approved', rejected: 'badge-rejected', revision: 'badge-revision' }
-  return <span className={`badge ${map[s] || 'badge-neutral'}`}>{s}</span>
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  pending:  { label: 'Pending Review', color: '#ff9b4e', bg: '#ff9b4e18', icon: '⏳' },
+  approved: { label: 'Approved',       color: '#4ede8c', bg: '#4ede8c18', icon: '✅' },
+  revision: { label: 'Needs Revision', color: '#5b9cf6', bg: '#5b9cf618', icon: '↩' },
+  rejected: { label: 'Rejected',       color: '#ff5f5f', bg: '#ff5f5f18', icon: '✕' },
 }
 
 export default function MySubmissionsPage() {
   const [user, setUser] = useState<{ name: string; role: string; designerType?: string } | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')
   const router = useRouter()
 
   useEffect(() => {
@@ -40,46 +44,148 @@ export default function MySubmissionsPage() {
 
   if (!user) return null
 
+  const needsAction = submissions.filter(s => s.status === 'revision' || s.status === 'rejected')
+  const filtered = filter === 'all' ? submissions : submissions.filter(s => s.status === filter)
+
   return (
     <>
       <Topbar userName={user.name} userRole="designer" designerType={user.designerType as 'video' | 'graphic'} activeTab="/designer/submissions" tabs={DESIGNER_TABS} />
       <div className="page">
+
+        {/* Action Required Banner */}
+        {needsAction.length > 0 && (
+          <div style={{
+            background: '#5b9cf618', border: '1px solid #5b9cf640',
+            borderRadius: '10px', padding: '12px 16px', marginBottom: '16px',
+            display: 'flex', alignItems: 'center', gap: '10px',
+          }}>
+            <i className="ti ti-alert-circle" style={{ fontSize: '18px', color: '#5b9cf6', flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 600, color: '#5b9cf6', fontSize: '13px' }}>
+                {needsAction.length} submission{needsAction.length > 1 ? 's' : ''} need{needsAction.length === 1 ? 's' : ''} your attention
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text2)', marginTop: '2px' }}>
+                {needsAction.map(s => s.taskName).join(', ')} — check PM feedback below and resubmit
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="section-header">
           <div className="section-title">My Submissions</div>
-          <span style={{ fontSize: '12px', color: 'var(--text3)' }}>{submissions.length} total</span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {['all', 'pending', 'revision', 'approved', 'rejected'].map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                style={{
+                  padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600,
+                  border: '1px solid var(--border)', cursor: 'pointer',
+                  background: filter === f ? 'var(--accent)' : 'var(--surface2)',
+                  color: filter === f ? '#fff' : 'var(--text2)',
+                  textTransform: 'capitalize',
+                }}>
+                {f === 'all' ? `All (${submissions.length})` : `${f} (${submissions.filter(s => s.status === f).length})`}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {loading ? <div className="empty">Loading…</div> : submissions.length === 0 ? (
-          <div className="empty">No submissions yet.<br /><a href="/designer/submit" style={{ color: 'var(--accent)' }}>Submit your first work →</a></div>
+        {loading ? (
+          <div className="empty">Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div className="empty">
+            {filter === 'all'
+              ? <>No submissions yet.<br /><a href="/designer/submit" style={{ color: 'var(--accent)' }}>Submit your first work →</a></>
+              : `No ${filter} submissions.`}
+          </div>
         ) : (
-          <div className="card">
-            {submissions.map(s => (
-              <div key={s.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500, marginBottom: '3px' }}>{s.taskName}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <span>{s.clientName}</span>
-                      <span className="tag">{s.deliverableType}</span>
-                      <span className="tag">{s.version}</span>
-                      <span style={{ color: 'var(--text3)' }}>{new Date(s.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                    </div>
-                    {s.pmComment && (
-                      <div className="comment-box" style={{ marginTop: '8px' }}>
-                        <strong>PM:</strong> {s.pmComment}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {filtered.map(s => {
+              const cfg = STATUS_CONFIG[s.status] || STATUS_CONFIG.pending
+              const needsWork = s.status === 'revision' || s.status === 'rejected'
+              return (
+                <div key={s.id} className="card" style={{
+                  padding: '16px',
+                  borderLeft: `3px solid ${cfg.color}`,
+                  ...(needsWork ? { boxShadow: `0 0 0 1px ${cfg.color}40` } : {}),
+                }}>
+                  {/* Top row */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>{s.taskName}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 500, color: 'var(--text)' }}>{s.clientName}</span>
+                        <span className="tag">{s.deliverableType}</span>
+                        <span className="tag">{s.version}</span>
+                        <span style={{ color: 'var(--text3)' }}>
+                          {new Date(s.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
                       </div>
-                    )}
+                    </div>
+                    {/* Status badge */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '5px',
+                      padding: '4px 10px', borderRadius: '20px',
+                      background: cfg.bg, color: cfg.color,
+                      fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                    }}>
+                      {cfg.icon} {cfg.label}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                    <StatusBadge s={s.status} />
-                    {s.viewUrl && s.viewUrl !== '#' && (
-                      <a href={s.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: '11px' }}>View File ↗</a>
-                    )}
-                  </div>
+
+                  {/* PM Feedback — most prominent when needs action */}
+                  {s.pmComment && (
+                    <div style={{
+                      marginTop: '12px', padding: '12px 14px',
+                      background: needsWork ? cfg.bg : 'var(--surface2)',
+                      border: `1px solid ${needsWork ? cfg.color + '50' : 'var(--border)'}`,
+                      borderRadius: '8px',
+                    }}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: cfg.color, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        PM Feedback
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.5 }}>
+                        {s.pmComment}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Resubmit CTA for revision/rejected */}
+                  {needsWork && (
+                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <a
+                        href={`/designer/submit?taskId=${s.taskId}`}
+                        className="btn btn-primary btn-sm"
+                        style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+                      >
+                        <i className="ti ti-upload" style={{ fontSize: '13px' }} />
+                        {s.status === 'revision' ? 'Submit Revised Version' : 'Resubmit'}
+                      </a>
+                      {s.viewUrl && s.viewUrl !== '#' && (
+                        <a href={s.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm"
+                          style={{ fontSize: '11px' }}>
+                          View Previous ↗
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {/* View link for approved */}
+                  {s.status === 'approved' && s.viewUrl && s.viewUrl !== '#' && (
+                    <div style={{ marginTop: '10px' }}>
+                      <a href={s.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm"
+                        style={{ fontSize: '11px' }}>
+                        View Approved File ↗
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Storage path */}
+                  {s.storagePath && (
+                    <div className="drive-path" style={{ marginTop: '8px', fontSize: '10px' }}>📁 {s.storagePath}</div>
+                  )}
                 </div>
-                {s.storagePath && <div className="drive-path" style={{ marginTop: '8px' }}>📁 {s.storagePath}</div>}
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
