@@ -80,6 +80,7 @@ export async function getOrCreateFolder(drive: ReturnType<typeof google.drive>, 
     supportsAllDrives: true,
     requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
     fields: 'id',
+    // Required for Shared Drive: driveId is inferred from the parent
   })
   return created.data.id!
 }
@@ -129,6 +130,8 @@ export async function getNextVersion(drive: ReturnType<typeof google.drive>, tas
   const safeName = taskName.replace(/'/g, "\\'")
   const res = await drive.files.list({
     q: `name contains '${safeName} - v' and '${parentId}' in parents and trashed=false`,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
     fields: 'files(name)',
   })
   const files = res.data.files || []
