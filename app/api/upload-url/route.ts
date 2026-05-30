@@ -18,18 +18,23 @@ export async function POST(req: NextRequest) {
   const { getDB } = await import('@/lib/supabase')
   const db = await getDB()
 
-  // Get current draft number
+  // Get current draft number + existing storage path
   const { data: existing } = await db
     .from('makers_studio_submissions')
-    .select('draft_number')
+    .select('draft_number, storage_path')
     .eq('task_id', taskId)
     .single()
 
   const nextDraft = existing ? (existing.draft_number as number) + 1 : 1
 
-  // Fixed path — draft always overwrites same file (no version suffix)
-  // e.g. Asia Cosmetic/June 2026/Videos/Asia Cosmetic Reel - draft.mp4
-  const fileName    = `${taskName} - draft.${ext}`
+  // Delete old draft file from storage so we can upload fresh
+  if (existing?.storage_path) {
+    await db.storage.from(BUCKET).remove([existing.storage_path as string])
+  }
+
+  // New path includes draft number so each round is distinct in the log
+  // but only the latest lives in storage at any time
+  const fileName    = `${taskName} - draft${nextDraft}.${ext}`
   const storagePath = `${folderPath}/${fileName}`
 
   // Create signed upload URL (1 hour)
