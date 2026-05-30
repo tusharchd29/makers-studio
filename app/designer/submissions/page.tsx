@@ -12,7 +12,8 @@ const DESIGNER_TABS = [
 interface Submission {
   id: string; taskId: string; taskName: string; clientName: string
   deliverableType: string; fileType: string; fileName: string
-  version: string; status: string; pmComment: string
+  version: string; draftNumber: number; status: string
+  pmComment: string; designerNote: string
   storagePath: string; viewUrl: string; submittedAt: string; notes: string
 }
 
