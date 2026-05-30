@@ -18,6 +18,10 @@ export interface Client {
 
 export interface SOWEntry {
   clientId: string
+  serviceType: string
+  totalCreatives: number
+  priority: string
+  status: string
   reels: number
   stories: number
   statics: number

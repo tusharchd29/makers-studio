@@ -12,14 +12,19 @@ async function getUser(req: NextRequest) {
 
 function toFrontend(r: Record<string, unknown>) {
   return {
-    clientId: r.client_id,
-    reels: r.reels || 0,
-    stories: r.stories || 0,
-    statics: r.statics || 0,
-    videos: r.videos || 0,
-    photos: r.photos || 0,
-    carousels: r.carousels || 0,
-    youtubeShorts: r.youtube_shorts || 0,
+    clientId:        r.client_id,
+    serviceType:     r.service_type    || '',
+    totalCreatives:  r.total_creatives || 0,
+    priority:        r.priority        || 'B',
+    status:          r.status          || 'Active',
+    // keep legacy breakdown fields for dashboard compatibility
+    reels:           r.reels           || 0,
+    stories:         r.stories         || 0,
+    statics:         r.statics         || 0,
+    videos:          r.videos          || 0,
+    photos:          r.photos          || 0,
+    carousels:       r.carousels       || 0,
+    youtubeShorts:   r.youtube_shorts  || 0,
   }
 }
 
@@ -28,7 +33,10 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { getDB } = await import('@/lib/supabase')
   const db = await getDB()
-  const { data, error } = await db.from('makers_studio_sow').select('*')
+  const { data, error } = await db
+    .from('makers_studio_sow')
+    .select('*')
+    .order('priority')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json((data || []).map(toFrontend))
 }
@@ -40,14 +48,18 @@ export async function POST(req: NextRequest) {
   const { getDB } = await import('@/lib/supabase')
   const db = await getDB()
   const { error } = await db.from('makers_studio_sow').upsert({
-    client_id: entry.clientId,
-    reels: entry.reels || 0,
-    stories: entry.stories || 0,
-    statics: entry.statics || 0,
-    videos: entry.videos || 0,
-    photos: entry.photos || 0,
-    carousels: entry.carousels || 0,
-    youtube_shorts: entry.youtubeShorts || 0,
+    client_id:       entry.clientId,
+    service_type:    entry.serviceType    || '',
+    total_creatives: entry.totalCreatives || 0,
+    priority:        entry.priority       || 'B',
+    status:          entry.status         || 'Active',
+    reels:           entry.reels          || 0,
+    stories:         entry.stories        || 0,
+    statics:         entry.statics        || 0,
+    videos:          entry.videos         || 0,
+    photos:          entry.photos         || 0,
+    carousels:       entry.carousels      || 0,
+    youtube_shorts:  entry.youtubeShorts  || 0,
   })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(entry)
