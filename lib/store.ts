@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { Task, SOWEntry, Client, CLIENTS } from './types'
+import { SEEDED_SOW } from './seedSOW'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 
@@ -32,8 +33,15 @@ export function deleteTask(id: string) {
   writeJSON('tasks.json', getTasks().filter(t => t.id !== id))
 }
 
-// SOW
-export function getSOW(): SOWEntry[] { return readJSON<SOWEntry[]>('sow.json', []) }
+// SOW — auto-seeds from Postings project on first load
+export function getSOW(): SOWEntry[] {
+  const existing = readJSON<SOWEntry[]>('sow.json', [])
+  if (existing.length === 0) {
+    writeJSON('sow.json', SEEDED_SOW)
+    return SEEDED_SOW
+  }
+  return existing
+}
 export function saveSOWEntry(entry: SOWEntry) {
   const sow = getSOW()
   const idx = sow.findIndex(s => s.clientId === entry.clientId)
