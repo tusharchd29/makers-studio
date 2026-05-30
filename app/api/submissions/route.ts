@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     console.error('Upload error:', err)
-    return NextResponse.json({ error: 'Upload failed. Check Drive permissions and try again.', detail: String(err) }, { status: 500 })
+    const errMsg = err instanceof Error ? err.message : String(err); console.error('FULL ERROR:', errMsg); return NextResponse.json({ error: errMsg }, { status: 500 })
   }
 }
 
