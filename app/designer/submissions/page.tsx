@@ -12,7 +12,7 @@ const DESIGNER_TABS = [
 interface Submission {
   id: string; taskName: string; clientName: string; deliverableType: string
   fileType: string; fileName: string; version: string; status: string
-  pmComment: string; drivePath: string; driveViewUrl: string; submittedAt: string
+  pmComment: string; storagePath: string; viewUrl: string; submittedAt: string
 }
 
 function StatusBadge({ s }: { s: string }) {
@@ -33,7 +33,7 @@ export default function MySubmissionsPage() {
     if (u.role !== 'designer') { router.push('/pm/dashboard'); return }
     setUser(u)
     fetch('/api/submissions').then(r => r.json()).then(data => {
-      if (Array.isArray(data)) setSubmissions(data.reverse())
+      if (Array.isArray(data)) setSubmissions(data)
       setLoading(false)
     })
   }, [router])
@@ -72,12 +72,12 @@ export default function MySubmissionsPage() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
                     <StatusBadge s={s.status} />
-                    {s.driveViewUrl && s.driveViewUrl !== '#' && (
-                      <a href={s.driveViewUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: '11px' }}>Drive ↗</a>
+                    {s.viewUrl && s.viewUrl !== '#' && (
+                      <a href={s.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: '11px' }}>View File ↗</a>
                     )}
                   </div>
                 </div>
-                {s.drivePath && <div className="drive-path" style={{ marginTop: '8px' }}>{s.drivePath}</div>}
+                {s.storagePath && <div className="drive-path" style={{ marginTop: '8px' }}>📁 {s.storagePath}</div>}
               </div>
             ))}
           </div>

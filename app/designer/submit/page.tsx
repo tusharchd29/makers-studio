@@ -20,7 +20,7 @@ function SubmitForm() {
   const [drag, setDrag] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [uploadStep, setUploadStep] = useState('')
-  const [result, setResult] = useState<{ drivePath: string; version: number; driveViewUrl: string } | null>(null)
+  const [result, setResult] = useState<{ storagePath: string; version: number; viewUrl: string } | null>(null)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
@@ -66,8 +66,7 @@ function SubmitForm() {
     fd.append('checklist', JSON.stringify(checklist))
     fd.append('notes', notes)
 
-    // Show steps so user knows it's working
-    const stepTimer = setTimeout(() => setUploadStep('Uploading to Google Drive…'), 1500)
+    const stepTimer = setTimeout(() => setUploadStep('Uploading to Supabase Storage…'), 1500)
     const stepTimer2 = setTimeout(() => setUploadStep('Saving submission record…'), 8000)
 
     try {
@@ -83,7 +82,7 @@ function SubmitForm() {
 
       const data = await res.json()
       setSubmitting(false); setUploadStep('')
-      setResult({ drivePath: data.drivePath, version: data.version, driveViewUrl: data.driveViewUrl })
+      setResult({ storagePath: data.storagePath, version: data.version, viewUrl: data.viewUrl })
 
     } catch (err) {
       clearTimeout(stepTimer); clearTimeout(stepTimer2)
@@ -110,10 +109,10 @@ function SubmitForm() {
             <div style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>
               v{result.version} uploaded. PM will review shortly.
             </div>
-            <div className="drive-path">📁 {result.drivePath}</div>
+            <div className="drive-path">📁 {result.storagePath}</div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' }}>
-              {result.driveViewUrl && result.driveViewUrl !== '#' && (
-                <a href={result.driveViewUrl} target="_blank" rel="noreferrer" className="btn btn-sm">View in Drive ↗</a>
+              {result.viewUrl && result.viewUrl !== '#' && (
+                <a href={result.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm">View File ↗</a>
               )}
               <button className="btn btn-sm btn-primary" onClick={reset}>Submit Another</button>
               <a href="/designer/tasks" className="btn btn-sm">My Tasks</a>
@@ -155,7 +154,7 @@ function SubmitForm() {
             )}
 
             <div className="field">
-              <label className="field-label">File * <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400 }}>(photo or video, any format — no compression)</span></label>
+              <label className="field-label">File * <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400 }}>(photo or video, any format)</span></label>
               <div
                 className={`upload-zone ${drag ? 'drag' : ''}`}
                 onDragOver={e => { e.preventDefault(); setDrag(true) }}
@@ -189,7 +188,7 @@ function SubmitForm() {
 
           <div>
             <div className="field">
-              <label className="field-label">Checklist <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400 }}>(optional — check what applies)</span></label>
+              <label className="field-label">Checklist <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400 }}>(optional)</span></label>
               <div className="card-sm">
                 {CHECKLIST_ITEMS.map(item => (
                   <div key={item} className="check-item" onClick={() => !submitting && toggleCheck(item)}>
@@ -204,7 +203,7 @@ function SubmitForm() {
 
             {selectedTask && file && (
               <div className="drive-path">
-                📁 Makers Studio / {selectedTask.clientName} / {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })} / {file.type.startsWith('video/') ? 'Videos' : 'Photos'} / {selectedTask.name} - v?.{file.name.split('.').pop()}
+                📁 {selectedTask.clientName} / {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })} / {file.type.startsWith('video/') ? 'Videos' : 'Photos'} / {selectedTask.name} - v?.{file.name.split('.').pop()}
               </div>
             )}
           </div>
@@ -217,7 +216,6 @@ function SubmitForm() {
           </div>
         )}
 
-        {/* Upload progress indicator */}
         {submitting && (
           <div className="alert alert-green" style={{ marginTop: '12px' }}>
             <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #C0DD97', borderTopColor: '#7DC242', borderRadius: '50%', animation: 'spin .7s linear infinite', flexShrink: 0 }} />
@@ -236,7 +234,7 @@ function SubmitForm() {
           >
             {submitting
               ? <><span style={{ display: 'inline-block', width: '13px', height: '13px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin .7s linear infinite' }} /> {uploadStep || 'Uploading…'}</>
-              : <><i className="ti ti-upload" /> Submit to Drive</>
+              : <><i className="ti ti-upload" /> Submit Work</>
             }
           </button>
         </div>

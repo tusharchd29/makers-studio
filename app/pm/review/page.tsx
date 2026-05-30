@@ -14,7 +14,7 @@ const PM_TABS = [
 interface Submission {
   id: string; taskName: string; clientName: string; designerName: string
   deliverableType: string; fileType: string; fileName: string; version: string
-  status: string; pmComment: string; driveViewUrl: string; drivePath: string
+  status: string; pmComment: string; viewUrl: string; storagePath: string
   checklist: string; notes: string; submittedAt: string
 }
 
@@ -40,7 +40,7 @@ export default function PMReviewPage() {
     if (u.role !== 'pm') { router.push('/designer/tasks'); return }
     setUser(u)
     fetch('/api/submissions').then(r => r.json()).then(data => {
-      if (Array.isArray(data)) setSubmissions(data.reverse())
+      if (Array.isArray(data)) setSubmissions(data)
       setLoading(false)
     })
   }, [router])
@@ -117,8 +117,8 @@ export default function PMReviewPage() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', minWidth: '120px' }}>
                     <StatusBadge s={s.status} />
-                    {s.driveViewUrl && s.driveViewUrl !== '#' && (
-                      <a href={s.driveViewUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: '11px' }}>Drive ↗</a>
+                    {s.viewUrl && s.viewUrl !== '#' && (
+                      <a href={s.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: '11px' }}>View File ↗</a>
                     )}
                   </div>
                 </div>
@@ -133,7 +133,7 @@ export default function PMReviewPage() {
 
                 {commenting === s.id && (
                   <div style={{ marginTop: '10px', background: 'var(--bg3)', borderRadius: 'var(--radius)', padding: '12px' }}>
-                    <div className="field-label" style={{ marginBottom: '6px' }}>Comment for designer (will see this)</div>
+                    <div className="field-label" style={{ marginBottom: '6px' }}>Comment for designer</div>
                     <textarea className="field-textarea" style={{ minHeight: '56px', marginBottom: '8px' }}
                       placeholder="Explain what needs to change…" value={comment}
                       onChange={e => setComment(e.target.value)} />
@@ -145,7 +145,7 @@ export default function PMReviewPage() {
                   </div>
                 )}
 
-                {s.drivePath && <div className="drive-path" style={{ marginTop: '8px' }}>{s.drivePath}</div>}
+                {s.storagePath && <div className="drive-path" style={{ marginTop: '8px' }}>📁 {s.storagePath}</div>}
               </div>
             ))}
           </div>
