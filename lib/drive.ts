@@ -1,38 +1,26 @@
 import { google } from 'googleapis'
-import { Readable } from 'stream'
 import { SOWEntry, Task, Client } from './types'
 import { SEEDED_SOW } from './seedSOW'
+import { supabase, BUCKET } from './supabase'
 
+// ─── GOOGLE AUTH (Sheets only — Drive upload replaced by Supabase) ──
 function getAuth() {
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (!keyJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY not set')
-
   let key: Record<string, string>
   try {
     key = JSON.parse(keyJson)
   } catch {
-    // Vercel sometimes double-escapes newlines in env vars — fix it
     const fixed = keyJson.replace(/\\n/g, '\n')
     key = JSON.parse(fixed)
   }
-
-  // Make sure private_key has real newlines, not escaped \n
   if (key.private_key) {
     key.private_key = key.private_key.replace(/\\n/g, '\n')
   }
-
   return new google.auth.GoogleAuth({
     credentials: key,
-    scopes: [
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/spreadsheets',
-    ],
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   })
-}
-
-export async function getDrive() {
-  const auth = getAuth()
-  return google.drive({ version: 'v3', auth })
 }
 
 export async function getSheets() {
@@ -42,7 +30,7 @@ export async function getSheets() {
 
 const SHEET_ID = process.env.SUBMISSIONS_SHEET_ID!
 
-// Ensure all 4 tabs exist with headers
+// ─── SHEET SETUP ───────────────────────────────────────────────────
 async function ensureSheetTabs() {
   const sheets = await getSheets()
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID })
@@ -55,10 +43,10 @@ async function ensureSheetTabs() {
     requestBody: { requests: toCreate.map(title => ({ addSheet: { properties: { title } } })) },
   })
   const headerData: { range: string; values: string[][] }[] = []
-  if (toCreate.includes('Submissions')) headerData.push({ range: 'Submissions!A1:R1', values: [['id','taskId','taskName','clientName','designerName','deliverableType','fileType','fileName','version','status','pmComment','checklist','notes','drivePath','driveViewUrl','submittedAt','reviewedAt','reviewedBy']] })
+  if (toCreate.includes('Submissions')) headerData.push({ range: 'Submissions!A1:R1', values: [['id','taskId','taskName','clientName','designerName','deliverableType','fileType','fileName','version','status','pmComment','checklist','notes','storagePath','viewUrl','submittedAt','reviewedAt','reviewedBy']] })
   if (toCreate.includes('Tasks')) headerData.push({ range: 'Tasks!A1:J1', values: [['id','clientId','clientName','name','deliverableType','assignedTo','deadline','brief','createdAt','createdBy']] })
   if (toCreate.includes('SOW')) headerData.push({ range: 'SOW!A1:H1', values: [['clientId','reels','stories','statics','videos','photos','carousels','youtubeShorts']] })
-  if (toCreate.includes('Clients')) headerData.push({ range: 'Clients!A1:C1', values: [['id','name','driveFolderId']] })
+  if (toCreate.includes('Clients')) headerData.push({ range: 'Clients!A1:C1', values: [['id','name','storageFolder']] })
   if (headerData.length > 0) {
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,
@@ -67,85 +55,54 @@ async function ensureSheetTabs() {
   }
 }
 
-// ─── DRIVE ─────────────────────────────────────────────────────────
-export async function getOrCreateFolder(drive: ReturnType<typeof google.drive>, name: string, parentId: string): Promise<string> {
-  const res = await drive.files.list({
-    q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-    fields: 'files(id)',
-  })
-  if (res.data.files && res.data.files.length > 0) return res.data.files[0].id!
-  const created = await drive.files.create({
-    supportsAllDrives: true,
-    requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
-    fields: 'id',
-    // Required for Shared Drive: driveId is inferred from the parent
-  })
-  return created.data.id!
+// ─── SUPABASE STORAGE UPLOAD ───────────────────────────────────────
+export async function uploadFileToStorage(
+  buffer: Buffer,
+  storagePath: string,
+  mimeType: string
+): Promise<{ storagePath: string; viewUrl: string }> {
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(storagePath, buffer, {
+      contentType: mimeType,
+      upsert: false,
+    })
+
+  if (error) throw new Error(`Storage upload failed: ${error.message}`)
+
+  // Generate a signed URL valid for 10 years (max allowed)
+  const { data: signedData, error: signErr } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10)
+
+  if (signErr || !signedData) throw new Error(`Failed to get signed URL: ${signErr?.message}`)
+
+  return { storagePath, viewUrl: signedData.signedUrl }
 }
 
-export async function uploadFileToDrive(drive: ReturnType<typeof google.drive>, buffer: Buffer, fileName: string, mimeType: string, parentId: string): Promise<{ id: string; viewUrl: string }> {
-  // Use raw multipart upload — SDK stream fails with service account quota error
-  // Get token directly from a fresh GoogleAuth instance
-  const auth = getAuth()
-  const client = await auth.getClient()
-  const tokenRes = await client.getAccessToken()
-  const accessToken = tokenRes.token
-
-  const metadata = JSON.stringify({ name: fileName, parents: [parentId] })
-  const boundary = 'makers_studio_boundary_' + Date.now()
-
-  const bodyParts: Buffer[] = [
-    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`),
-    Buffer.from(metadata),
-    Buffer.from(`\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`),
-    buffer,
-    Buffer.from(`\r\n--${boundary}--`),
-  ]
-  const body = Buffer.concat(bodyParts)
-
-  const res = await fetch(
-    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': `multipart/related; boundary="${boundary}"`,
-      },
-      body,
-    }
-  )
-
-  if (!res.ok) {
-    const errText = await res.text()
-    throw new Error(`Drive upload failed (${res.status}): ${errText}`)
-  }
-
-  const data = await res.json() as { id: string; webViewLink: string }
-  return { id: data.id, viewUrl: data.webViewLink }
-}
-
-export async function getNextVersion(drive: ReturnType<typeof google.drive>, taskName: string, parentId: string): Promise<number> {
-  const safeName = taskName.replace(/'/g, "\\'")
-  const res = await drive.files.list({
-    q: `name contains '${safeName} - v' and '${parentId}' in parents and trashed=false`,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-    fields: 'files(name)',
+export async function getNextVersion(clientName: string, taskName: string, month: string, fileType: string): Promise<number> {
+  const prefix = `${clientName}/${month}/${fileType}/${taskName} - v`
+  const { data } = await supabase.storage.from(BUCKET).list(`${clientName}/${month}/${fileType}`, {
+    search: taskName,
   })
-  const files = res.data.files || []
-  const versions = files.map(f => { const m = f.name?.match(/- v(\d+)/); return m ? parseInt(m[1]) : 0 })
+  if (!data || data.length === 0) return 1
+  const versions = data
+    .map(f => { const m = f.name.match(/- v(\d+)/); return m ? parseInt(m[1]) : 0 })
   return versions.length > 0 ? Math.max(...versions) + 1 : 1
 }
 
 // ─── SUBMISSIONS ───────────────────────────────────────────────────
-export async function appendSubmissionToSheet(s: { id: string; taskId: string; taskName: string; clientName: string; designerName: string; deliverableType: string; fileType: string; fileName: string; driveViewUrl: string; drivePath: string; version: number; status: string; pmComment: string; checklist: string; notes: string; submittedAt: string }) {
+export async function appendSubmissionToSheet(s: {
+  id: string; taskId: string; taskName: string; clientName: string; designerName: string
+  deliverableType: string; fileType: string; fileName: string; viewUrl: string
+  storagePath: string; version: number; status: string; pmComment: string
+  checklist: string; notes: string; submittedAt: string
+}) {
   await ensureSheetTabs()
   const sheets = await getSheets()
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID, range: 'Submissions!A:R', valueInputOption: 'RAW',
-    requestBody: { values: [[s.id, s.taskId, s.taskName, s.clientName, s.designerName, s.deliverableType, s.fileType, s.fileName, `v${s.version}`, s.status, s.pmComment, s.checklist, s.notes, s.drivePath, s.driveViewUrl, s.submittedAt, '', '']] },
+    requestBody: { values: [[s.id, s.taskId, s.taskName, s.clientName, s.designerName, s.deliverableType, s.fileType, s.fileName, `v${s.version}`, s.status, s.pmComment, s.checklist, s.notes, s.storagePath, s.viewUrl, s.submittedAt, '', '']] },
   })
 }
 
@@ -177,7 +134,7 @@ export async function getAllSubmissions() {
   return rows.slice(1).map(r => ({
     id: r[0], taskId: r[1], taskName: r[2], clientName: r[3], designerName: r[4],
     deliverableType: r[5], fileType: r[6], fileName: r[7], version: r[8], status: r[9],
-    pmComment: r[10], checklist: r[11], notes: r[12], drivePath: r[13], driveViewUrl: r[14],
+    pmComment: r[10], checklist: r[11], notes: r[12], storagePath: r[13], viewUrl: r[14],
     submittedAt: r[15], reviewedAt: r[16], reviewedBy: r[17],
   }))
 }

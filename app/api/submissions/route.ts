@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
-import { getDrive, getOrCreateFolder, uploadFileToDrive, getNextVersion, appendSubmissionToSheet, getAllSubmissions, updateSubmissionStatus, getClientsFromSheet } from '@/lib/drive'
+import {
+  uploadFileToStorage, getNextVersion,
+  appendSubmissionToSheet, getAllSubmissions,
+  updateSubmissionStatus, getClientsFromSheet
+} from '@/lib/drive'
 import { randomUUID } from 'crypto'
 
-// Tell Vercel: max 60s, use Node.js runtime (not Edge) so we can stream files
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-const DRIVE_ROOT = process.env.DRIVE_ROOT_FOLDER_ID!
-const HAS_DRIVE = !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+const HAS_STORAGE = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
 
 async function getUser(req: NextRequest) {
   const token = req.cookies.get('ms_session')?.value
@@ -20,14 +22,14 @@ function getCurrentMonth() {
   return new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
 }
 
-function getFileType(mimeType: string): 'video' | 'photo' {
-  return mimeType.startsWith('video/') ? 'video' : 'photo'
+function getFileType(mimeType: string): 'Videos' | 'Photos' {
+  return mimeType.startsWith('video/') ? 'Videos' : 'Photos'
 }
 
 export async function GET(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!HAS_DRIVE) return NextResponse.json([])
+  if (!HAS_STORAGE) return NextResponse.json([])
   try {
     const all = await getAllSubmissions()
     if (user.role === 'designer') {
@@ -65,51 +67,43 @@ export async function POST(req: NextRequest) {
   const month = getCurrentMonth()
   const ext = file.name.split('.').pop() || 'bin'
 
-  if (!HAS_DRIVE) {
-    // No Drive configured — mock success so UI doesn't hang
+  if (!HAS_STORAGE) {
     const version = 1
     const fileName = `${taskName} - v${version}.${ext}`
-    const drivePath = `Makers Studio / ${clientId} / ${month} / ${fileType === 'video' ? 'Videos' : 'Photos'} / ${fileName}`
-    return NextResponse.json({ id: submissionId, driveViewUrl: '#', drivePath, version, fileName, warning: 'Drive not configured' })
+    return NextResponse.json({ id: submissionId, viewUrl: '#', storagePath: `mock/${fileName}`, version, fileName, warning: 'Storage not configured' })
   }
 
   try {
-    // Get client info from Sheets
     const clients = await getClientsFromSheet()
     const client = clients.find(c => c.id === clientId)
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 400 })
 
-    const drive = await getDrive()
-
-    // Build folder path: Client → Month → Videos|Photos
-    const clientFolderId = client.driveFolderId || await getOrCreateFolder(drive, client.name, DRIVE_ROOT)
-    const monthFolderId = await getOrCreateFolder(drive, month, clientFolderId)
-    const typeFolderName = fileType === 'video' ? 'Videos' : 'Photos'
-    const typeFolderId = await getOrCreateFolder(drive, typeFolderName, monthFolderId)
-
     // Auto-version
-    const version = await getNextVersion(drive, taskName, typeFolderId)
+    const version = await getNextVersion(client.name, taskName, month, fileType)
     const fileName = `${taskName} - v${version}.${ext}`
 
-    // Upload — read as buffer once
+    // Storage path: ClientName/Month/Videos|Photos/filename
+    const storagePath = `${client.name}/${month}/${fileType}/${fileName}`
+
+    // Upload to Supabase Storage
     const buffer = Buffer.from(await file.arrayBuffer())
-    const { viewUrl: driveViewUrl } = await uploadFileToDrive(drive, buffer, fileName, file.type, typeFolderId)
-    const drivePath = `Makers Studio / ${client.name} / ${month} / ${typeFolderName} / ${fileName}`
+    const { viewUrl } = await uploadFileToStorage(buffer, storagePath, file.type)
 
     // Log to Sheet
     await appendSubmissionToSheet({
       id: submissionId, taskId, taskName, clientName: client.name,
-      designerName: user.name, deliverableType, fileType,
-      fileName, driveViewUrl, drivePath, version,
+      designerName: user.name, deliverableType, fileType: fileType.toLowerCase(),
+      fileName, viewUrl, storagePath, version,
       status: 'pending', pmComment: '', checklist: checklist.join(', '),
       notes, submittedAt: new Date().toISOString(),
     })
 
-    return NextResponse.json({ id: submissionId, driveViewUrl, drivePath, version, fileName })
+    return NextResponse.json({ id: submissionId, viewUrl, storagePath, version, fileName })
 
   } catch (err) {
     console.error('Upload error:', err)
-    const errMsg = err instanceof Error ? err.message : String(err); console.error('FULL ERROR:', errMsg); return NextResponse.json({ error: errMsg }, { status: 500 })
+    const errMsg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: errMsg }, { status: 500 })
   }
 }
 
@@ -117,7 +111,7 @@ export async function PUT(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { submissionId, status, pmComment } = await req.json()
-  if (!HAS_DRIVE) return NextResponse.json({ ok: true, warning: 'Drive not configured' })
+  if (!HAS_STORAGE) return NextResponse.json({ ok: true, warning: 'Storage not configured' })
   await updateSubmissionStatus(submissionId, status, pmComment || '', user.name)
   return NextResponse.json({ ok: true })
 }
