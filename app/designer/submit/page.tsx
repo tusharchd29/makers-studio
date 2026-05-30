@@ -78,6 +78,14 @@ function SubmitForm() {
     if (subStatusMap[selectedTask.id] === 'pending') { setError('This task is already in review. Wait for PM feedback before resubmitting.'); return }
     setSubmitting(true); setError(''); setProgress(0); setUploadStep('Preparing…')
 
+    // Check file size — Supabase free tier limit is 50MB
+    const MAX_MB = 50
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setError(`File is ${(file.size / 1024 / 1024).toFixed(1)}MB — maximum allowed is ${MAX_MB}MB. Please compress the video before uploading. Use HandBrake (free) or reduce resolution/bitrate in your export settings.`)
+      setSubmitting(false)
+      return
+    }
+
     try {
       const ext        = file.name.split('.').pop() || 'bin'
       const fileType   = file.type.startsWith('video/') ? 'Videos' : 'Photos'
@@ -220,7 +228,7 @@ function SubmitForm() {
               <label className="field-label">
                 File *
                 <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400, marginLeft: '6px' }}>
-                  any size — uploads directly to storage
+                  max 50MB — compress videos before uploading
                 </span>
               </label>
               <div
@@ -237,14 +245,19 @@ function SubmitForm() {
                   disabled={submitting} />
                 {file ? (
                   <div>
-                    <div style={{ fontWeight: 600, color: '#7DC242', marginBottom: '4px' }}>✓ {file.name}</div>
-                    <div style={{ fontSize: '11px', color: '#aaa' }}>{(file.size / 1024 / 1024).toFixed(1)} MB · {file.type}</div>
+                    <div style={{ fontWeight: 600, color: file.size > 50*1024*1024 ? '#ff5f5f' : '#7DC242', marginBottom: '4px' }}>
+                      {file.size > 50*1024*1024 ? '⚠' : '✓'} {file.name}
+                    </div>
+                    <div style={{ fontSize: '11px', color: file.size > 50*1024*1024 ? '#ff5f5f' : '#aaa' }}>
+                      {(file.size / 1024 / 1024).toFixed(1)} MB · {file.type}
+                      {file.size > 50*1024*1024 && ' — too large (max 50MB)'}
+                    </div>
                   </div>
                 ) : (
                   <div>
                     <i className="ti ti-cloud-upload" style={{ fontSize: '28px', display: 'block', marginBottom: '8px', color: '#C0DD97' }} />
                     <div style={{ color: '#888', marginBottom: '4px', fontSize: '13px' }}>Drag & drop or click to upload</div>
-                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG — any size</div>
+                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG · max 50MB</div>
                   </div>
                 )}
               </div>
@@ -308,7 +321,7 @@ function SubmitForm() {
           ) : (
             <a href="/designer/tasks" className="btn">Cancel</a>
           )}
-          <button className="btn btn-primary" onClick={submit} disabled={!selectedTask || !file || submitting}>
+          <button className="btn btn-primary" onClick={submit} disabled={!selectedTask || !file || submitting || (!!file && file.size > 50*1024*1024)}>
             {submitting
               ? <><span style={{ display: 'inline-block', width: '13px', height: '13px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin .7s linear infinite' }} /> {uploadStep || 'Uploading…'}</>
               : <><i className="ti ti-upload" /> Submit Work</>
