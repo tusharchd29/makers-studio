@@ -49,6 +49,12 @@ export default function PMDashboard() {
   const currentMonth = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
   const activeMonth  = selectedMonth || currentMonth
 
+  const [approvedFiles, setApprovedFiles] = useState<{clientName: string; sowMonth: string; deliverableType: string}[]>([])
+
+  useEffect(() => {
+    fetch('/api/approved').then(r => r.json()).then(d => { if (Array.isArray(d)) setApprovedFiles(d) })
+  }, [])
+
   const monthSubs = useMemo(() =>
     submissions.filter(s => new Date(s.submittedAt).toLocaleString('en-US', { month: 'long', year: 'numeric' }) === activeMonth),
     [submissions, activeMonth])
@@ -63,9 +69,9 @@ export default function PMDashboard() {
   function getSOWProgress(entry: SOWEntry) {
     const client = clients.find(c => c.id === entry.clientId)
     if (!client) return { done: 0, total: 0, pct: 0 }
-    const clientSubs = monthSubs.filter(s => s.clientName === client.name && s.status === 'approved')
+    // Use approved_files filtered by sowMonth — accurate regardless of when submitted
+    const done = approvedFiles.filter(f => f.clientName === client.name && f.sowMonth === activeMonth).length
     const total = entry.totalCreatives || (entry.reels + entry.stories + entry.statics + entry.videos + entry.photos + entry.carousels + entry.youtubeShorts)
-    const done  = clientSubs.length
     return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 }
   }
 

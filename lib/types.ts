@@ -1,97 +1,95 @@
-export type UserRole = 'designer' | 'pm'
-export type DesignerType = 'video' | 'graphic'
+export type UserRole       = 'designer' | 'pm'
+export type DesignerType   = 'video' | 'graphic'
 export type DeliverableType = 'Reel' | 'Story' | 'Static' | 'Carousel' | 'YouTube Short' | 'Product Video' | 'Photo'
 export type SubmissionStatus = 'pending' | 'approved' | 'rejected' | 'revision'
-export type FileType = 'video' | 'photo'
+export type FileType       = 'videos' | 'photos'
 
 export interface User {
-  name: string
-  role: UserRole
-  designerType?: DesignerType
+  name: string; role: UserRole; designerType?: DesignerType
 }
 
 export interface Client {
-  id: string
-  name: string
-  driveFolderId?: string
+  id: string; name: string; driveFolderId?: string
 }
 
 export interface SOWEntry {
-  clientId: string
-  serviceType: string
-  totalCreatives: number
-  priority: string
-  status: string
-  reels: number
-  stories: number
-  statics: number
-  videos: number
-  photos: number
-  carousels: number
-  youtubeShorts: number
+  clientId: string; serviceType: string; totalCreatives: number
+  priority: string; status: string
+  reels: number; stories: number; statics: number
+  videos: number; photos: number; carousels: number; youtubeShorts: number
 }
 
 export interface Task {
-  id: string
-  clientId: string
-  clientName: string
-  name: string
-  deliverableType: DeliverableType
-  assignedTo: string
-  deadline: string
-  brief?: string
-  createdAt: string
-  createdBy: string
+  id: string; clientId: string; clientName: string; name: string
+  deliverableType: DeliverableType; assignedTo: string
+  deadline: string; brief?: string; createdAt: string; createdBy: string
+  sowMonth: string  // e.g. "June 2026" — which month this counts toward
 }
 
+// A single draft submission (gets overwritten on resubmit)
 export interface Submission {
-  id: string
-  taskId: string
-  taskName: string
-  clientId: string
-  clientName: string
-  designerName: string
-  deliverableType: DeliverableType
-  fileType: FileType
-  fileName: string
-  driveFileId: string
-  driveViewUrl: string
-  drivePath: string
-  version: number
-  status: SubmissionStatus
-  pmComment?: string
-  checklist: string[]
-  notes?: string
-  submittedAt: string
-  reviewedAt?: string
-  reviewedBy?: string
+  id: string; taskId: string; taskName: string
+  clientName: string; designerName: string
+  deliverableType: DeliverableType; fileType: string
+  fileName: string; storagePath: string; viewUrl: string
+  draftNumber: number; status: SubmissionStatus
+  designerNote: string; pmComment: string
+  submittedAt: string; reviewedAt?: string; reviewedBy?: string
+}
+
+// Revision history entry (append-only log for Excel export)
+export interface RevisionEntry {
+  id: string; taskId: string; taskName: string
+  clientName: string; designerName: string
+  draftNumber: number; storagePath: string; viewUrl: string
+  designerNote: string; pmComment: string; status: string
+  submittedAt: string; reviewedAt?: string; reviewedBy?: string
+}
+
+// Final approved file
+export interface ApprovedFile {
+  id: string; taskId: string; taskName: string
+  clientName: string; designerName: string
+  sowMonth: string; deliverableType: string
+  storagePath: string; viewUrl: string
+  totalDrafts: number; approvedAt: string; approvedBy: string
 }
 
 export const CLIENTS: Client[] = [
-  { id: 'asia-cosmetic', name: 'Asia Cosmetic', driveFolderId: '1mgiy4yZgxYPqKJB6S5NTOojZEHHe_W1W' },
-  { id: 'courtesy-honda', name: 'Courtesy Honda', driveFolderId: '1AiNzvEFsvTdBum_ZuEfrnvmDNNDzAfQz' },
-  { id: 'faith-diagnostic', name: 'Faith Diagnostic', driveFolderId: '1AM3dcfxMUm1_DvTJCqlibwvg7jjfaLMe' },
-  { id: 'pratha-pre-school', name: 'Pratha Pre School', driveFolderId: '1rwteM7HLl4IBn9kBZvffe9v2MSgWcxos' },
-  { id: 'pyarababy', name: 'PyaraBaby', driveFolderId: '1DtZ0oKSaiKoQ_GR_IaF1gFxSePrmB7iM' },
-  { id: 'shecare-360', name: 'SheCare 360', driveFolderId: '1589GGQNgn50LQzdzavizj5QCbTFCej_3' },
-  { id: 'ssw', name: 'SSW', driveFolderId: '1M6bJXTuIO8lAU_7XMAujQhR9jR5SJ1bO' },
-  { id: 'berkeley', name: 'Berkeley', driveFolderId: '1dn6ixyPF6iz2KPLZrDK5F9oK3a0I6wVT' },
-  { id: 'manthan', name: 'Manthan', driveFolderId: '10n6LiBCLvYSHPRlgDw5-AesMtmGqvOJx' },
-  { id: 'veriseek', name: 'VeriSeek', driveFolderId: '1l3EyAcc9TlBqU6Wmo-GxxZiaY5mNtKve' },
-  { id: 'summarizex', name: 'SummarizeX', driveFolderId: '1ntG8VezmTA2fclVuhaBtPpsZv0kz2XqZ' },
-  { id: 'outlanders', name: 'Outlanders', driveFolderId: '1DNNRqx3O62Wq66OsenRwNIZd_WrJKvnN' },
+  { id: 'asia-cosmetic',     name: 'Asia Cosmetic' },
+  { id: 'courtesy-honda',    name: 'Courtesy Honda' },
+  { id: 'faith-diagnostic',  name: 'Faith Diagnostic' },
+  { id: 'pratha-pre-school', name: 'Pratha Pre School' },
+  { id: 'pyarababy',         name: 'PyaraBaby' },
+  { id: 'shecare-360',       name: 'SheCare 360' },
+  { id: 'ssw',               name: 'SSW' },
+  { id: 'berkeley',          name: 'Berkeley' },
+  { id: 'manthan',           name: 'Manthan' },
+  { id: 'veriseek',          name: 'VeriSeek' },
+  { id: 'summarizex',        name: 'SummarizeX' },
+  { id: 'outlanders',        name: 'Outlanders' },
 ]
 
 export const USERS = [
-  { name: 'Anshu', role: 'designer' as UserRole, designerType: 'video' as DesignerType },
-  { name: 'Amit', role: 'designer' as UserRole, designerType: 'video' as DesignerType },
+  { name: 'Anshu',   role: 'designer' as UserRole, designerType: 'video'   as DesignerType },
+  { name: 'Amit',    role: 'designer' as UserRole, designerType: 'video'   as DesignerType },
   { name: 'Ranjeet', role: 'designer' as UserRole, designerType: 'graphic' as DesignerType },
-  { name: 'PM', role: 'pm' as UserRole },
+  { name: 'PM',      role: 'pm'       as UserRole },
 ]
 
 export const DELIVERABLE_TYPES: DeliverableType[] = [
   'Reel', 'Story', 'Static', 'Carousel', 'YouTube Short', 'Product Video', 'Photo'
 ]
+
+export const SOW_MONTHS = () => {
+  const months = []
+  const d = new Date()
+  for (let i = -1; i <= 3; i++) {
+    const m = new Date(d.getFullYear(), d.getMonth() + i, 1)
+    months.push(m.toLocaleString('en-US', { month: 'long', year: 'numeric' }))
+  }
+  return months
+}
 
 export const CHECKLIST_ITEMS = [
   'Color corrected',

@@ -17,6 +17,7 @@ function toFrontend(r: Record<string, unknown>) {
     name: r.name, deliverableType: r.deliverable_type,
     assignedTo: r.assigned_to, deadline: r.deadline,
     brief: r.brief || '', createdAt: r.created_at, createdBy: r.created_by,
+    sowMonth: r.sow_month || '',
   }
 }
 
@@ -42,7 +43,8 @@ export async function POST(req: NextRequest) {
     id: randomUUID(), client_id: body.clientId, client_name: body.clientName,
     name: body.name, deliverable_type: body.deliverableType,
     assigned_to: body.assignedTo, deadline: body.deadline,
-    brief: body.brief || '', created_at: new Date().toISOString(), created_by: user.name,
+    brief: body.brief || '', created_at: new Date().toISOString(),
+    created_by: user.name, sow_month: body.sowMonth || '',
   }
   const { error } = await db.from('makers_studio_tasks').insert(task)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -59,7 +61,8 @@ export async function PUT(req: NextRequest) {
     id: body.id, client_id: body.clientId, client_name: body.clientName,
     name: body.name, deliverable_type: body.deliverableType,
     assigned_to: body.assignedTo, deadline: body.deadline,
-    brief: body.brief || '', created_at: body.createdAt, created_by: body.createdBy,
+    brief: body.brief || '', created_at: body.createdAt,
+    created_by: body.createdBy, sow_month: body.sowMonth || '',
   }
   const { error } = await db.from('makers_studio_tasks').upsert(task)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

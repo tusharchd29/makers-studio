@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Topbar from '@/components/Topbar'
-import { Task, DELIVERABLE_TYPES } from '@/lib/types'
+import { Task, DELIVERABLE_TYPES, SOW_MONTHS } from '@/lib/types'
 
 const PM_TABS = [
   { label: 'Dashboard',    href: '/pm/dashboard', icon: 'ti-layout-dashboard' },
@@ -28,7 +28,7 @@ export default function PMTasksPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
-  const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '' })
+  const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [filterClient, setFilterClient] = useState('')
@@ -53,12 +53,12 @@ export default function PMTasksPage() {
 
   function openNew() {
     setEditTask(null)
-    setForm({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '' })
+    setForm({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
     setShowForm(true)
   }
   function openEdit(t: Task) {
     setEditTask(t)
-    setForm({ clientId: t.clientId, name: t.name, deliverableType: t.deliverableType, assignedTo: t.assignedTo, deadline: t.deadline.split('T')[0], brief: t.brief || '' })
+    setForm({ clientId: t.clientId, name: t.name, deliverableType: t.deliverableType, assignedTo: t.assignedTo, deadline: t.deadline.split('T')[0], brief: t.brief || '', sowMonth: t.sowMonth || '' })
     setShowForm(true)
   }
 
@@ -67,8 +67,8 @@ export default function PMTasksPage() {
     setSaving(true)
     const client = clients.find(c => c.id === form.clientId)!
     const body = editTask
-      ? { ...editTask, ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
-      : { ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
+      ? { ...editTask, ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'], sowMonth: form.sowMonth }
+      : { ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'], sowMonth: form.sowMonth }
     const res = await fetch('/api/tasks', {
       method: editTask ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -191,6 +191,13 @@ export default function PMTasksPage() {
                   <label className="field-label">Deadline *</label>
                   <input className="field-input" type="date" value={form.deadline} onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))} />
                 </div>
+              </div>
+              <div className="field">
+                <label className="field-label">SOW Month *</label>
+                <select className="field-select" value={form.sowMonth} onChange={e => setForm(f => ({ ...f, sowMonth: e.target.value }))}>
+                  <option value="">Select month…</option>
+                  {SOW_MONTHS().map(m => <option key={m}>{m}</option>)}
+                </select>
               </div>
               <div className="field">
                 <label className="field-label">Brief for designer</label>
