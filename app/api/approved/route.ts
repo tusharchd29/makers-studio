@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
+import { getApprovedFiles } from '@/lib/store'
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get('ms_session')?.value
@@ -14,22 +15,9 @@ export async function GET(req: NextRequest) {
   const month      = searchParams.get('month')
   const clientName = searchParams.get('client')
 
-  const { getDB } = await import('@/lib/supabase')
-  const db = await getDB()
+  let files = getApprovedFiles()
+  if (month)      files = files.filter(f => f.sowMonth === month)
+  if (clientName) files = files.filter(f => f.clientName === clientName)
 
-  let query = db.from('makers_studio_approved_files').select('*').order('approved_at', { ascending: false })
-  if (month)      query = query.eq('sow_month', month)
-  if (clientName) query = query.eq('client_name', clientName)
-
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json((data || []).map((r: Record<string, unknown>) => ({
-    id: r.id, taskId: r.task_id, taskName: r.task_name,
-    clientName: r.client_name, designerName: r.designer_name,
-    sowMonth: r.sow_month, deliverableType: r.deliverable_type,
-    storagePath: r.storage_path, viewUrl: r.view_url,
-    totalDrafts: r.total_drafts,
-    approvedAt: r.approved_at, approvedBy: r.approved_by,
-  })))
+  return NextResponse.json(files)
 }

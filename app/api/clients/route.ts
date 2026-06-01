@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
+import { getClients, saveClient, deleteClient } from '@/lib/store'
 import { randomUUID } from 'crypto'
 
 async function getUser(req: NextRequest) {
@@ -11,51 +12,33 @@ async function getUser(req: NextRequest) {
   return verifySession(token)
 }
 
-function toFrontend(r: Record<string, unknown>) {
-  return { id: r.id, name: r.name, driveFolderId: r.storage_folder || '' }
-}
-
 export async function GET(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { getDB } = await import('@/lib/supabase')
-  const db = await getDB()
-  const { data, error } = await db.from('makers_studio_clients').select('*').order('name')
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json((data || []).map(toFrontend))
+  return NextResponse.json(getClients())
 }
 
 export async function POST(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { name } = await req.json()
-  const { getDB } = await import('@/lib/supabase')
-  const db = await getDB()
-  const client = { id: randomUUID(), name, storage_folder: '' }
-  const { error } = await db.from('makers_studio_clients').insert(client)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(toFrontend(client))
+  const client = { id: randomUUID(), name, driveFolderId: '' }
+  saveClient(client)
+  return NextResponse.json(client)
 }
 
 export async function PUT(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const client = await req.json()
-  const { getDB } = await import('@/lib/supabase')
-  const db = await getDB()
-  const row = { id: client.id, name: client.name, storage_folder: client.driveFolderId || '' }
-  const { error } = await db.from('makers_studio_clients').upsert(row)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(toFrontend(row))
+  saveClient(client)
+  return NextResponse.json(client)
 }
 
 export async function DELETE(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await req.json()
-  const { getDB } = await import('@/lib/supabase')
-  const db = await getDB()
-  const { error } = await db.from('makers_studio_clients').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  deleteClient(id)
   return NextResponse.json({ ok: true })
 }
