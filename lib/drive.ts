@@ -4,9 +4,12 @@ const ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID!
 
 function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
+  // If GOOGLE_IMPERSONATE_USER is set, impersonate that user (requires domain-wide delegation)
+  const impersonate = process.env.GOOGLE_IMPERSONATE_USER
   return new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/drive'],
+    ...(impersonate ? { clientOptions: { subject: impersonate } } : {}),
   })
 }
 
@@ -14,7 +17,6 @@ function getDriveClient() {
   return google.drive({ version: 'v3', auth: getAuth() })
 }
 
-// Ensure a subfolder exists under a parent; create if missing. Returns folder ID.
 export async function ensureFolder(name: string, parentId: string): Promise<string> {
   const drive = getDriveClient()
   const res = await drive.files.list({
@@ -32,39 +34,47 @@ export async function ensureFolder(name: string, parentId: string): Promise<stri
   return created.data.id!
 }
 
-// Upload file using raw multipart request — avoids service account quota error
 export async function uploadFileToDrive(
   fileName: string,
   mimeType: string,
   buffer: Buffer,
   folderId: string,
 ): Promise<string> {
-  const auth = getAuth()
+  const auth  = getAuth()
   const token = await auth.getAccessToken()
 
-  const metadata = JSON.stringify({ name: fileName, parents: [folderId] })
+  // First get the driveId of the parent folder (needed for shared drives)
+  const folderRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,driveId&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  const folderMeta = await folderRes.json()
+  const driveId    = folderMeta.driveId // undefined for personal drive folders
+
+  const metadata: Record<string, unknown> = { name: fileName, parents: [folderId] }
+  if (driveId) metadata.driveId = driveId
+
   const boundary = 'meraki_boundary_x7k9'
+  const metaStr  = JSON.stringify(metadata)
 
   const body = Buffer.concat([
-    Buffer.from(
-      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`
-    ),
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaStr}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`),
     buffer,
     Buffer.from(`\r\n--${boundary}--`),
   ])
 
-  const res = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`,
-        'Content-Length': String(body.length),
-      },
-      body,
-    }
-  )
+  const url = driveId
+    ? `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true&driveId=${driveId}&includeItemsFromAllDrives=true`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+    },
+    body,
+  })
 
   if (!res.ok) {
     const err = await res.text()
@@ -75,30 +85,25 @@ export async function uploadFileToDrive(
   return data.id as string
 }
 
-// Make file readable by anyone with the link
 export async function makePublic(fileId: string): Promise<string> {
-  const auth = getAuth()
+  const auth  = getAuth()
   const token = await auth.getAccessToken()
-
-  await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions?supportsAllDrives=true`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-  })
-
+  await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions?supportsAllDrives=true`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    }
+  )
   return `https://drive.google.com/file/d/${fileId}/view`
 }
 
-// Get folder ID for client/task path, creating as needed
 export async function getOrCreateTaskFolder(clientName: string, taskName: string): Promise<string> {
   const clientFolder = await ensureFolder(clientName, ROOT_FOLDER_ID)
   return await ensureFolder(taskName, clientFolder)
 }
 
-// Delete a file from Drive (best-effort)
 export async function deleteFile(fileId: string): Promise<void> {
   try {
     const drive = getDriveClient()
@@ -106,11 +111,6 @@ export async function deleteFile(fileId: string): Promise<void> {
   } catch { /* ignore */ }
 }
 
-// Legacy — kept for compatibility
 export async function finalizeUpload(fileId: string): Promise<string> {
   return makePublic(fileId)
-}
-
-export async function createResumableUploadUrl(): Promise<string> {
-  throw new Error('Use uploadFileToDrive instead')
 }
