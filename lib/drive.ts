@@ -63,12 +63,18 @@ export async function createResumableUploadUrl(
 // After upload completes, get the file ID and make it readable by link.
 // Pass the upload URL — Drive returns the file metadata on final chunk.
 export async function finalizeUpload(fileId: string): Promise<string> {
+  if (!fileId) throw new Error('finalizeUpload: fileId is empty')
   const drive = getDriveClient()
   // Make file readable by anyone with the link
-  await drive.permissions.create({
-    fileId,
-    requestBody: { role: 'reader', type: 'anyone' },
-  })
+  try {
+    await drive.permissions.create({
+      fileId,
+      requestBody: { role: 'reader', type: 'anyone' },
+    })
+  } catch (e) {
+    // Permission may already exist — continue
+    console.warn('Permission create warning:', e)
+  }
   const viewUrl = `https://drive.google.com/file/d/${fileId}/view`
   return viewUrl
 }
