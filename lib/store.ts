@@ -21,14 +21,23 @@ export async function getClients(): Promise<Client[]> {
     for (const c of CLIENTS) await appendRow('clients', { id: c.id, name: c.name, drive_folder_id: '' })
     return CLIENTS
   }
-  // Ensure any newly added clients from CLIENTS are present (upsert by id)
+  // Ensure all CLIENTS present; also fix stale names (e.g. Outlanders → Outlander)
+  const nameById = Object.fromEntries(CLIENTS.map(c => [c.id, c.name]))
   const existingIds = new Set(rows.map(r => r.id))
   for (const c of CLIENTS) {
     if (!existingIds.has(c.id)) {
       await appendRow('clients', { id: c.id, name: c.name, drive_folder_id: '' })
     }
   }
-  // Re-read after potential additions
+  // Fix any name mismatches (rename stale rows to match CLIENTS)
+  const nameUpdates: Promise<boolean>[] = []
+  for (const row of rows) {
+    if (nameById[row.id] && row.name !== nameById[row.id]) {
+      nameUpdates.push(updateRow('clients', 'id', row.id, { name: nameById[row.id] }))
+    }
+  }
+  if (nameUpdates.length) await Promise.all(nameUpdates)
+  // Re-read after fixes
   const fresh = await readAll<{ id: string; name: string; drive_folder_id: string }>('clients')
   return fresh.map(r => ({ id: r.id, name: r.name, driveFolderId: r.drive_folder_id }))
 }
