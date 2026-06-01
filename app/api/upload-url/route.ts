@@ -4,18 +4,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
 import { getSubmissionByTaskId } from '@/lib/store'
-import { getOrCreateTaskFolder } from '@/lib/drive'
-import { google } from 'googleapis'
-import { Readable } from 'stream'
-
-function getDriveClient() {
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  })
-  return google.drive({ version: 'v3', auth })
-}
+import { getOrCreateTaskFolder, uploadFileToDrive, makePublic } from '@/lib/drive'
 
 export async function POST(req: NextRequest) {
   const token = req.cookies.get('ms_session')?.value
@@ -24,10 +13,10 @@ export async function POST(req: NextRequest) {
   if (!user || user.role !== 'designer') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const formData = await req.formData()
-    const file     = formData.get('file') as File | null
-    const taskId   = formData.get('taskId') as string
-    const taskName = formData.get('taskName') as string
+    const formData   = await req.formData()
+    const file       = formData.get('file') as File | null
+    const taskId     = formData.get('taskId') as string
+    const taskName   = formData.get('taskName') as string
     const clientName = formData.get('clientName') as string
 
     if (!file || !taskId || !taskName || !clientName)
@@ -39,36 +28,16 @@ export async function POST(req: NextRequest) {
     const ext         = file.name.split('.').pop() || 'bin'
     const draftName   = `${taskName} - draft${draftNumber}.${ext}`
 
-    // Get/create folder
+    // Get/create folder structure
     const folderId = await getOrCreateTaskFolder(clientName, taskName)
 
-    // Upload to Drive via service account (server-side, no CORS issues)
-    const drive    = getDriveClient()
+    // Upload file via multipart (server-side, no quota issues)
     const arrayBuf = await file.arrayBuffer()
     const buffer   = Buffer.from(arrayBuf)
-    const stream   = Readable.from(buffer)
+    const fileId   = await uploadFileToDrive(draftName, file.type || 'application/octet-stream', buffer, folderId)
 
-    const driveRes = await drive.files.create({
-      requestBody: {
-        name: draftName,
-        parents: [folderId],
-      },
-      media: {
-        mimeType: file.type || 'application/octet-stream',
-        body: stream,
-      },
-      fields: 'id,name',
-    })
-
-    const fileId = driveRes.data.id!
-
-    // Make file readable by anyone with the link
-    await drive.permissions.create({
-      fileId,
-      requestBody: { role: 'reader', type: 'anyone' },
-    })
-
-    const viewUrl = `https://drive.google.com/file/d/${fileId}/view`
+    // Make publicly viewable
+    const viewUrl = await makePublic(fileId)
 
     return NextResponse.json({ fileId, draftName, draftNumber, viewUrl })
 
