@@ -1,4 +1,3 @@
-// Returns a resumable upload URL so the browser can upload large files directly to Drive
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +12,9 @@ export async function POST(req: NextRequest) {
   const user = await verifySession(token)
   if (!user || user.role !== 'designer') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { taskId, taskName, clientName, fileName, mimeType } = await req.json()
+  const body = await req.json()
+  const { taskId, taskName, clientName, fileName, mimeType } = body
+
   if (!taskId || !taskName || !clientName || !fileName || !mimeType)
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
@@ -23,19 +24,17 @@ export async function POST(req: NextRequest) {
   const ext         = fileName.split('.').pop() || 'bin'
   const draftName   = `${taskName} - draft${draftNumber}.${ext}`
 
-  // Get or create folder: Uploads / clientName / taskName
+  // Log the folder ID being used
+  const folderId_env = process.env.DRIVE_ROOT_FOLDER_ID || 'NOT_SET'
+  console.log('DRIVE_ROOT_FOLDER_ID:', folderId_env)
+
   let folderId: string
   try {
     folderId = await getOrCreateTaskFolder(clientName, taskName)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    // Most common cause: Drive folder not shared with service account
-    if (msg.includes('File not found') || msg.includes('not found')) {
-      return NextResponse.json({
-        error: 'Google Drive folder is not accessible. Please share the Drive folder with: maker-studio@makers-studio-498110.iam.gserviceaccount.com (Editor access)'
-      }, { status: 500 })
-    }
-    return NextResponse.json({ error: msg }, { status: 500 })
+    console.error('Drive folder error:', msg)
+    return NextResponse.json({ error: `Drive error: ${msg}` }, { status: 500 })
   }
 
   let uploadUrl: string
@@ -43,7 +42,8 @@ export async function POST(req: NextRequest) {
     uploadUrl = await createResumableUploadUrl(draftName, mimeType, folderId)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    return NextResponse.json({ error: `Failed to create upload session: ${msg}` }, { status: 500 })
+    console.error('Upload URL error:', msg)
+    return NextResponse.json({ error: `Upload session error: ${msg}` }, { status: 500 })
   }
 
   return NextResponse.json({ uploadUrl, draftName, draftNumber })
