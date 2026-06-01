@@ -18,6 +18,10 @@ interface SOWEntry {
   reels: number; stories: number; statics: number
   videos: number; photos: number; carousels: number; youtubeShorts: number
 }
+interface ProgressEntry {
+  total: number
+  byType: Record<string, number>
+}
 
 const EMPTY: Omit<SOWEntry, 'clientId'> = {
   serviceType: '', totalCreatives: 0, priority: 'B', status: 'Active',
@@ -32,6 +36,8 @@ export default function PMSOWPage() {
   const [user, setUser] = useState<{ name: string; role: string } | null>(null)
   const [sow, setSOW] = useState<SOWEntry[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [progress, setProgress] = useState<Record<string, ProgressEntry>>({})
+  const [currentMonth, setCurrentMonth] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [form, setForm] = useState<Omit<SOWEntry, 'clientId'>>(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -47,7 +53,14 @@ export default function PMSOWPage() {
       fetch('/api/sow').then(r => r.json()),
       fetch('/api/clients').then(r => r.json()),
     ]).then(([s, c]) => {
-      if (Array.isArray(s)) setSOW(s)
+      if (s?.sow && Array.isArray(s.sow)) {
+        setSOW(s.sow)
+        setProgress(s.progress || {})
+        setCurrentMonth(s.month || '')
+      } else if (Array.isArray(s)) {
+        // legacy fallback
+        setSOW(s)
+      }
       if (Array.isArray(c)) setClients(c)
     })
   }, [router])
@@ -96,13 +109,39 @@ export default function PMSOWPage() {
     { key: 'youtubeShorts' as const, label: 'YT Shorts' },
   ]
 
+  // Summary totals
+  const totalRequired = sow.filter(s => s.status === 'Active').reduce((a, b) => a + (b.totalCreatives || 0), 0)
+  const totalApproved = Object.values(progress).reduce((a, b) => a + b.total, 0)
+  const overallPct = totalRequired > 0 ? Math.round((totalApproved / totalRequired) * 100) : 0
+
   return (
     <>
       <Topbar userName={user.name} userRole="pm" activeTab="/pm/sow" tabs={PM_TABS} />
       <div className="page">
         <div className="section-header">
           <div className="section-title">Scope of Work</div>
-          <span style={{ fontSize: '12px', color: 'var(--text3)' }}>Synced from Postings — {clients.length} clients</span>
+          <span style={{ fontSize: '12px', color: 'var(--text3)' }}>
+            {currentMonth} · {clients.length} clients · {totalApproved}/{totalRequired} creatives approved ({overallPct}%)
+          </span>
+        </div>
+
+        {/* Summary bar */}
+        <div className="card" style={{ padding: '14px 18px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text2)' }}>
+              Overall Progress — {currentMonth}
+            </span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: overallPct >= 80 ? '#4ede8c' : overallPct >= 50 ? '#ff9b4e' : '#ff5f5f' }}>
+              {totalApproved} / {totalRequired}
+            </span>
+          </div>
+          <div style={{ background: 'var(--surface2)', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
+            <div style={{
+              width: `${Math.min(overallPct, 100)}%`, height: '100%', borderRadius: '6px',
+              background: overallPct >= 80 ? '#4ede8c' : overallPct >= 50 ? '#ff9b4e' : '#ff5f5f',
+              transition: 'width 0.4s ease',
+            }} />
+          </div>
         </div>
 
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -112,7 +151,9 @@ export default function PMSOWPage() {
                 <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                   <th style={{ textAlign: 'left', padding: '10px 16px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>Client</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>Service Type</th>
-                  <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Creatives/Mo</th>
+                  <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>SOW Target</th>
+                  <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>Approved</th>
+                  <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: '120px' }}>Progress</th>
                   <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Priority</th>
                   <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</th>
                   <th style={{ textAlign: 'center', padding: '10px 12px', color: 'var(--text3)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>Breakdown</th>
@@ -125,6 +166,13 @@ export default function PMSOWPage() {
                   const isEditing = editing === client.id
                   const prioColor = PRIORITY_COLORS[entry?.priority || 'B'] || '#5b9cf6'
                   const isInactive = entry?.status === 'Inactive'
+
+                  // Progress: approved count vs SOW target
+                  const clientProgress = progress[client.name]
+                  const approved = clientProgress?.total || 0
+                  const target = entry?.totalCreatives || 0
+                  const pct = target > 0 ? Math.min(Math.round((approved / target) * 100), 100) : 0
+                  const progressColor = pct >= 100 ? '#4ede8c' : pct >= 60 ? '#5b9cf6' : pct >= 30 ? '#ff9b4e' : '#ff5f5f'
 
                   return (
                     <tr key={client.id} style={{ borderBottom: '1px solid var(--border)', opacity: isInactive ? 0.5 : 1 }}>
@@ -142,7 +190,7 @@ export default function PMSOWPage() {
                         )}
                       </td>
 
-                      {/* Total Creatives */}
+                      {/* SOW Target (editable) */}
                       <td style={{ textAlign: 'center', padding: '12px 12px' }}>
                         {isEditing ? (
                           <input type="number" min="0" className="field-input"
@@ -153,6 +201,45 @@ export default function PMSOWPage() {
                           <span style={{ fontWeight: 700, color: entry?.totalCreatives ? 'var(--text)' : 'var(--text3)' }}>
                             {entry?.totalCreatives || '—'}
                           </span>
+                        )}
+                      </td>
+
+                      {/* Approved count (read-only, live from submissions) */}
+                      <td style={{ textAlign: 'center', padding: '12px 12px' }}>
+                        <span style={{ fontWeight: 700, color: approved > 0 ? '#4ede8c' : 'var(--text3)' }}>
+                          {approved || '0'}
+                        </span>
+                        {clientProgress?.byType && Object.keys(clientProgress.byType).length > 0 && (
+                          <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '3px' }}>
+                            {Object.entries(clientProgress.byType).map(([type, count]) => (
+                              <span key={type} style={{
+                                fontSize: '9px', padding: '1px 4px', borderRadius: '8px',
+                                background: 'var(--surface2)', color: 'var(--text2)',
+                              }}>{type.slice(0,3)}: {count}</span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Progress bar */}
+                      <td style={{ padding: '12px 16px', minWidth: '120px' }}>
+                        {target > 0 ? (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '10px', color: 'var(--text3)' }}>{pct}%</span>
+                              <span style={{ fontSize: '10px', color: progressColor, fontWeight: 600 }}>
+                                {pct >= 100 ? '✓ Done' : `${target - approved} left`}
+                              </span>
+                            </div>
+                            <div style={{ background: 'var(--surface2)', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${pct}%`, height: '100%', borderRadius: '4px',
+                                background: progressColor, transition: 'width 0.3s ease',
+                              }} />
+                            </div>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text3)', fontSize: '11px' }}>—</span>
                         )}
                       </td>
 
@@ -237,6 +324,10 @@ export default function PMSOWPage() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--text3)', textAlign: 'right' }}>
+          Approved count is live from designer submissions · SOW target is editable by PM
         </div>
       </div>
     </>
