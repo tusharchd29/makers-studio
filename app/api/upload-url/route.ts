@@ -24,8 +24,27 @@ export async function POST(req: NextRequest) {
   const draftName   = `${taskName} - draft${draftNumber}.${ext}`
 
   // Get or create folder: Uploads / clientName / taskName
-  const folderId  = await getOrCreateTaskFolder(clientName, taskName)
-  const uploadUrl = await createResumableUploadUrl(draftName, mimeType, folderId)
+  let folderId: string
+  try {
+    folderId = await getOrCreateTaskFolder(clientName, taskName)
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    // Most common cause: Drive folder not shared with service account
+    if (msg.includes('File not found') || msg.includes('not found')) {
+      return NextResponse.json({
+        error: 'Google Drive folder is not accessible. Please share the Drive folder with: maker-studio@makers-studio-498110.iam.gserviceaccount.com (Editor access)'
+      }, { status: 500 })
+    }
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+
+  let uploadUrl: string
+  try {
+    uploadUrl = await createResumableUploadUrl(draftName, mimeType, folderId)
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return NextResponse.json({ error: `Failed to create upload session: ${msg}` }, { status: 500 })
+  }
 
   return NextResponse.json({ uploadUrl, draftName, draftNumber })
 }
