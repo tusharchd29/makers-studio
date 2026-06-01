@@ -16,12 +16,11 @@ export async function GET(req: NextRequest) {
   const clientName = searchParams.get('client')
   const month      = searchParams.get('month')
 
-  let revisions = getRevisions()
+  let revisions = await getRevisions()
   if (taskId)     revisions = revisions.filter(r => r.taskId === taskId)
   if (clientName) revisions = revisions.filter(r => r.clientName === clientName)
   if (month)      revisions = revisions.filter(r =>
     new Date(r.submittedAt).toLocaleString('en-US', { month: 'long', year: 'numeric' }) === month
   )
-
   return NextResponse.json(revisions)
 }

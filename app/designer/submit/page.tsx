@@ -11,22 +11,22 @@ const DESIGNER_TABS = [
 ]
 
 function SubmitForm() {
-  const [user, setUser]               = useState<{ name: string; role: string; designerType?: string } | null>(null)
-  const [tasks, setTasks]             = useState<Task[]>([])
+  const [user, setUser]             = useState<{ name: string; role: string; designerType?: string } | null>(null)
+  const [tasks, setTasks]           = useState<Task[]>([])
   const [selectedTaskId, setSelectedTaskId] = useState('')
-  const [file, setFile]               = useState<File | null>(null)
-  const [checklist, setChecklist]     = useState<string[]>([])
-  const [notes, setNotes]             = useState('')
-  const [drag, setDrag]               = useState(false)
-  const [submitting, setSubmitting]   = useState(false)
-  const [progress, setProgress]       = useState(0)
-  const [uploadStep, setUploadStep]   = useState('')
-  const [result, setResult]           = useState<{ draftNumber: number; viewUrl: string; fileName: string } | null>(null)
-  const [error, setError]             = useState('')
+  const [file, setFile]             = useState<File | null>(null)
+  const [checklist, setChecklist]   = useState<string[]>([])
+  const [notes, setNotes]           = useState('')
+  const [drag, setDrag]             = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [progress, setProgress]     = useState(0)
+  const [uploadStep, setUploadStep] = useState('')
+  const [result, setResult]         = useState<{ draftNumber: number; viewUrl: string; fileName: string } | null>(null)
+  const [error, setError]           = useState('')
   const [subStatusMap, setSubStatusMap] = useState<Record<string, string>>({})
-  const fileRef   = useRef<HTMLInputElement>(null)
-  const xhrRef    = useRef<XMLHttpRequest | null>(null)
-  const router    = useRouter()
+  const fileRef  = useRef<HTMLInputElement>(null)
+  const xhrRef   = useRef<XMLHttpRequest | null>(null)
+  const router   = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -58,13 +58,11 @@ function SubmitForm() {
   function toggleCheck(item: string) {
     setChecklist(c => c.includes(item) ? c.filter(x => x !== item) : [...c, item])
   }
-
   function handleDrop(e: React.DragEvent) {
     e.preventDefault(); setDrag(false)
     const f = e.dataTransfer.files[0]
     if (f) setFile(f)
   }
-
   function cancel() {
     xhrRef.current?.abort()
     setSubmitting(false); setProgress(0); setUploadStep('')
@@ -76,43 +74,77 @@ function SubmitForm() {
       setError('This task is already in review. Wait for PM feedback before resubmitting.')
       return
     }
-
-    setSubmitting(true); setError(''); setProgress(5); setUploadStep('Uploading to Drive…')
+    setSubmitting(true); setError(''); setProgress(5); setUploadStep('Preparing upload…')
 
     try {
-      const fd = new FormData()
-      fd.append('file',            file)
-      fd.append('taskId',          selectedTask.id)
-      fd.append('taskName',        selectedTask.name)
-      fd.append('clientName',      selectedTask.clientName)
-      fd.append('deliverableType', selectedTask.deliverableType)
-      fd.append('designerNote',    notes)
+      // Step 1 — get resumable upload URL from our server
+      const urlRes = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId:      selectedTask.id,
+          taskName:    selectedTask.name,
+          clientName:  selectedTask.clientName,
+          fileName:    file.name,
+          mimeType:    file.type || 'application/octet-stream',
+        }),
+      })
+      if (!urlRes.ok) {
+        const d = await urlRes.json()
+        throw new Error(d.error || 'Failed to get upload slot')
+      }
+      const { uploadUrl, draftName, draftNumber } = await urlRes.json()
 
-      // XHR so we can show upload progress
-      const { draftNumber, viewUrl, fileName } = await new Promise<{ draftNumber: number; viewUrl: string; fileName: string }>((resolve, reject) => {
+      // Step 2 — upload directly to Google Drive via XHR (no Vercel limit, full progress)
+      setUploadStep('Uploading to Drive…')
+      const fileId = await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhrRef.current = xhr
         xhr.upload.onprogress = e => {
-          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 90) + 5)
+          if (e.lengthComputable) setProgress(10 + Math.round((e.loaded / e.total) * 80))
         }
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            try { resolve(JSON.parse(xhr.responseText)) }
-            catch { reject(new Error('Invalid server response')) }
+            try {
+              const data = JSON.parse(xhr.responseText)
+              resolve(data.id)
+            } catch { reject(new Error('Could not parse Drive response')) }
           } else {
-            try { reject(new Error(JSON.parse(xhr.responseText).error || `Upload failed: ${xhr.status}`)) }
-            catch { reject(new Error(`Upload failed: ${xhr.status}`)) }
+            reject(new Error(`Upload failed: ${xhr.status}`))
           }
         }
         xhr.onerror = () => reject(new Error('Network error during upload'))
         xhr.onabort = () => reject(new Error('Upload cancelled'))
-        xhr.open('POST', '/api/submissions')
-        xhr.send(fd)
+        // Append fields=id so Drive returns the file ID
+        xhr.open('PUT', uploadUrl + (uploadUrl.includes('?') ? '&' : '?') + 'fields=id')
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+        xhr.send(file)
       })
 
-      setProgress(100); setUploadStep('Done!')
-      setSubmitting(false)
-      setResult({ draftNumber, viewUrl, fileName })
+      setProgress(92); setUploadStep('Saving submission…')
+
+      // Step 3 — notify server to finalize (set permissions + save to Sheets)
+      const res = await fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId:          selectedTask.id,
+          taskName:        selectedTask.name,
+          clientName:      selectedTask.clientName,
+          deliverableType: selectedTask.deliverableType,
+          designerNote:    notes,
+          fileId,
+          draftName,
+          draftNumber,
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed to save submission')
+      }
+      const data = await res.json()
+      setProgress(100); setSubmitting(false)
+      setResult({ draftNumber: data.draftNumber, viewUrl: data.viewUrl, fileName: data.fileName })
       router.refresh()
 
     } catch (err) {
@@ -138,7 +170,9 @@ function SubmitForm() {
           <div className="card" style={{ textAlign: 'center', padding: '36px', maxWidth: '440px', margin: '0 auto' }}>
             <div style={{ fontSize: '40px', marginBottom: '12px' }}>✅</div>
             <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#3B6D11' }}>Submitted!</div>
-            <div style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>Draft {result.draftNumber} uploaded to Google Drive. PM will review shortly.</div>
+            <div style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>
+              Draft {result.draftNumber} uploaded to Google Drive. PM will review shortly.
+            </div>
             <div className="drive-path">📁 {result.fileName}</div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' }}>
               {result.viewUrl && <a href={result.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm">View in Drive ↗</a>}
@@ -183,7 +217,12 @@ function SubmitForm() {
             )}
 
             <div className="field">
-              <label className="field-label">File *</label>
+              <label className="field-label">
+                File *
+                <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400, marginLeft: '6px' }}>
+                  any size — uploads directly to Google Drive
+                </span>
+              </label>
               <div
                 className={`upload-zone ${drag ? 'drag' : ''}`}
                 onDragOver={e => { e.preventDefault(); setDrag(true) }}
@@ -205,7 +244,7 @@ function SubmitForm() {
                   <div>
                     <i className="ti ti-cloud-upload" style={{ fontSize: '28px', display: 'block', marginBottom: '8px', color: '#C0DD97' }} />
                     <div style={{ color: '#888', marginBottom: '4px', fontSize: '13px' }}>Drag & drop or click to upload</div>
-                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG · uploaded to Google Drive</div>
+                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG · no size limit</div>
                   </div>
                 )}
               </div>
@@ -232,7 +271,7 @@ function SubmitForm() {
 
             {selectedTask && file && (
               <div className="drive-path">
-                📁 Drive / {selectedTask.clientName} / {selectedTask.name} / {selectedTask.name} - draft?.{file.name.split('.').pop()}
+                📁 Makers Studio / {selectedTask.clientName} / {selectedTask.name} / {selectedTask.name} - draft?.{file.name.split('.').pop()}
               </div>
             )}
           </div>
@@ -254,6 +293,11 @@ function SubmitForm() {
             <div style={{ height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
               <div style={{ width: `${progress}%`, height: '100%', background: 'var(--accent)', borderRadius: '4px', transition: 'width .2s' }} />
             </div>
+            {file && (
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>
+                {(file.size / 1024 / 1024).toFixed(1)} MB · uploading directly to Google Drive
+              </div>
+            )}
           </div>
         )}
 

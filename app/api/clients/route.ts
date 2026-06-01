@@ -15,7 +15,7 @@ async function getUser(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  return NextResponse.json(getClients())
+  return NextResponse.json(await getClients())
 }
 
 export async function POST(req: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { name } = await req.json()
   const client = { id: randomUUID(), name, driveFolderId: '' }
-  saveClient(client)
+  await saveClient(client)
   return NextResponse.json(client)
 }
 
@@ -31,7 +31,7 @@ export async function PUT(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const client = await req.json()
-  saveClient(client)
+  await saveClient(client)
   return NextResponse.json(client)
 }
 
@@ -39,6 +39,6 @@ export async function DELETE(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await req.json()
-  deleteClient(id)
+  await deleteClient(id)
   return NextResponse.json({ ok: true })
 }

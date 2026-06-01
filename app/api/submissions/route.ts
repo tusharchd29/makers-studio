@@ -8,7 +8,7 @@ import {
   appendRevision, updateRevision, getRevisionsByTaskId,
   getTasks, saveApprovedFile,
 } from '@/lib/store'
-import { uploadFile, ensureFolder, getRootFolderId, deleteFile } from '@/lib/drive'
+import { finalizeUpload, deleteFile } from '@/lib/drive'
 import { randomUUID } from 'crypto'
 
 async function getUser(req: NextRequest) {
@@ -20,66 +20,47 @@ async function getUser(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  let subs = getSubmissions()
+  let subs = await getSubmissions()
   if (user.role === 'designer') subs = subs.filter(s => s.designerName === user.name)
   return NextResponse.json(subs)
 }
 
-// POST — designer uploads a new draft (multipart/form-data)
+// POST — called after browser finishes uploading to Drive directly
+// Body: { taskId, taskName, clientName, deliverableType, designerNote, fileId, draftName, draftNumber }
 export async function POST(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'designer') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const formData = await req.formData()
-  const file            = formData.get('file') as File | null
-  const taskId          = formData.get('taskId') as string
-  const taskName        = formData.get('taskName') as string
-  const clientName      = formData.get('clientName') as string
-  const deliverableType = formData.get('deliverableType') as string
-  const designerNote    = formData.get('designerNote') as string || ''
+  const { taskId, taskName, clientName, deliverableType, designerNote, fileId, draftName, draftNumber } = await req.json()
+  if (!taskId || !fileId) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
-  if (!file || !taskId || !taskName || !clientName) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-  }
-
-  // Determine draft number
-  const existing   = getSubmissionByTaskId(taskId)
-  const draftNumber = existing ? existing.draftNumber + 1 : 1
-  const ext        = file.name.split('.').pop() || 'bin'
-  const fileName   = `${taskName} - draft${draftNumber}.${ext}`
-
-  // Upload to Drive: root / clientName / taskName /
-  const rootId     = getRootFolderId()
-  const clientDir  = await ensureFolder(clientName, rootId)
-  const taskDir    = await ensureFolder(taskName, clientDir)
-
-  const buffer = Buffer.from(await file.arrayBuffer())
-  const { fileId, viewUrl } = await uploadFile(buffer, fileName, file.type || 'application/octet-stream', taskDir)
+  // Finalize Drive file — set public read permission, get view URL
+  const viewUrl = await finalizeUpload(fileId)
 
   const now          = new Date().toISOString()
+  const existing     = await getSubmissionByTaskId(taskId)
   const submissionId = existing?.id || randomUUID()
 
   const submission = {
     id: submissionId, taskId, taskName,
     clientName, designerName: user.name,
-    deliverableType: deliverableType as never,
-    fileType: file.type,
-    fileName, storagePath: fileId, viewUrl,
+    deliverableType, fileType: '',
+    fileName: draftName, storagePath: fileId, viewUrl,
     draftNumber, status: 'pending' as const,
-    designerNote, pmComment: '',
-    submittedAt: now, reviewedAt: undefined, reviewedBy: undefined,
+    designerNote: designerNote || '', pmComment: '',
+    submittedAt: now,
   }
-  saveSubmission(submission)
+  await saveSubmission(submission)
 
-  appendRevision({
+  await appendRevision({
     id: randomUUID(), taskId, taskName,
     clientName, designerName: user.name,
     draftNumber, storagePath: fileId, viewUrl,
-    designerNote, pmComment: '', status: 'pending',
-    submittedAt: now,
+    designerNote: designerNote || '', pmComment: '',
+    status: 'pending', submittedAt: now,
   })
 
-  return NextResponse.json({ id: submissionId, viewUrl, draftNumber, fileName })
+  return NextResponse.json({ id: submissionId, viewUrl, draftNumber, fileName: draftName })
 }
 
 // PUT — PM reviews a submission
@@ -88,18 +69,18 @@ export async function PUT(req: NextRequest) {
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { submissionId, status, pmComment } = await req.json()
-  const subs = getSubmissions()
+  const subs = await getSubmissions()
   const sub  = subs.find(s => s.id === submissionId)
   if (!sub) return NextResponse.json({ error: 'Submission not found' }, { status: 404 })
 
   const now = new Date().toISOString()
-  updateSubmission(sub.taskId, { status, pmComment: pmComment || '', reviewedAt: now, reviewedBy: user.name })
-  updateRevision(sub.taskId, sub.draftNumber, { pmComment: pmComment || '', status, reviewedAt: now, reviewedBy: user.name })
+  await updateSubmission(sub.taskId, { status, pmComment: pmComment || '', reviewedAt: now, reviewedBy: user.name })
+  await updateRevision(sub.taskId, sub.draftNumber, { pmComment: pmComment || '', status, reviewedAt: now, reviewedBy: user.name })
 
   if (status === 'approved') {
-    const tasks   = getTasks()
-    const task    = tasks.find(t => t.id === sub.taskId)
-    saveApprovedFile({
+    const tasks = await getTasks()
+    const task  = tasks.find(t => t.id === sub.taskId)
+    await saveApprovedFile({
       id: randomUUID(), taskId: sub.taskId,
       taskName: sub.taskName, clientName: sub.clientName,
       designerName: sub.designerName,
@@ -109,9 +90,8 @@ export async function PUT(req: NextRequest) {
       totalDrafts: sub.draftNumber,
       approvedAt: now, approvedBy: user.name,
     })
-
     // Delete previous draft files from Drive
-    const allRevisions   = getRevisionsByTaskId(sub.taskId)
+    const allRevisions    = await getRevisionsByTaskId(sub.taskId)
     const previousFileIds = allRevisions
       .filter(r => r.storagePath && r.storagePath !== sub.storagePath)
       .map(r => r.storagePath)
@@ -119,8 +99,7 @@ export async function PUT(req: NextRequest) {
   }
 
   if (status === 'rejected') {
-    // Delete all draft files from Drive
-    const allRevisions = getRevisionsByTaskId(sub.taskId)
+    const allRevisions = await getRevisionsByTaskId(sub.taskId)
     for (const r of allRevisions) if (r.storagePath) await deleteFile(r.storagePath)
   }
 

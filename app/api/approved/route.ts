@@ -15,9 +15,8 @@ export async function GET(req: NextRequest) {
   const month      = searchParams.get('month')
   const clientName = searchParams.get('client')
 
-  let files = getApprovedFiles()
+  let files = await getApprovedFiles()
   if (month)      files = files.filter(f => f.sowMonth === month)
   if (clientName) files = files.filter(f => f.clientName === clientName)
-
   return NextResponse.json(files)
 }

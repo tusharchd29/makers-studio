@@ -15,7 +15,7 @@ async function getUser(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  let tasks = getTasks()
+  let tasks = await getTasks()
   if (user.role === 'designer') tasks = tasks.filter(t => t.assignedTo === user.name)
   return NextResponse.json(tasks)
 }
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     brief: body.brief || '', createdAt: new Date().toISOString(),
     createdBy: user.name, sowMonth: body.sowMonth || '',
   }
-  saveTask(task)
+  await saveTask(task)
   return NextResponse.json(task)
 }
 
@@ -40,7 +40,7 @@ export async function PUT(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
-  saveTask(body)
+  await saveTask(body)
   return NextResponse.json(body)
 }
 
@@ -48,6 +48,6 @@ export async function DELETE(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await req.json()
-  deleteTask(id)
+  await deleteTask(id)
   return NextResponse.json({ ok: true })
 }
