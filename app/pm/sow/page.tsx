@@ -8,7 +8,6 @@ const PM_TABS = [
   { label: 'Review Queue', href: '/pm/review',    icon: 'ti-eye-check' },
   { label: 'Tasks',        href: '/pm/tasks',     icon: 'ti-checklist' },
   { label: 'SOW',          href: '/pm/sow',       icon: 'ti-file-description' },
-  { label: 'Clients',      href: '/pm/clients',   icon: 'ti-building' },
 ]
 
 const SOW_PIN = '11111'
@@ -22,7 +21,7 @@ interface SOWEntry {
 }
 interface ProgressEntry { total: number; byType: Record<string, number> }
 
-const EMPTY_ENTRY: Omit<SOWEntry, 'clientId'> = {
+const EMPTY_SOW: Omit<SOWEntry, 'clientId'> = {
   serviceType: '', totalCreatives: 0, priority: 'B', status: 'Active',
   reels: 0, stories: 0, statics: 0, videos: 0, photos: 0, carousels: 0, youtubeShorts: 0,
 }
@@ -51,14 +50,28 @@ export default function PMSOWPage() {
   const [progress, setProgress] = useState<Record<string, ProgressEntry>>({})
   const [month, setMonth]       = useState('')
   const [loading, setLoading]   = useState(true)
+
+  // PIN lock
   const [unlocked, setUnlocked] = useState(false)
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
+
+  // SOW editing
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState<Omit<SOWEntry, 'clientId'>>(EMPTY_ENTRY)
-  const [saving, setSaving]     = useState(false)
-  const [filterStatus, setFilterStatus]     = useState('')
+  const [editForm, setEditForm]   = useState<Omit<SOWEntry, 'clientId'>>(EMPTY_SOW)
+  const [savingSOW, setSavingSOW] = useState(false)
+
+  // Client management (all PIN-protected)
+  const [showAddClient, setShowAddClient]   = useState(false)
+  const [newClientName, setNewClientName]   = useState('')
+  const [editClientId, setEditClientId]     = useState<string | null>(null)
+  const [editClientName, setEditClientName] = useState('')
+  const [savingClient, setSavingClient]     = useState(false)
+
+  // Filters
+  const [filterStatus,   setFilterStatus]   = useState('')
   const [filterPriority, setFilterPriority] = useState('')
+
   const router = useRouter()
 
   const load = useCallback(async () => {
@@ -82,20 +95,30 @@ export default function PMSOWPage() {
     load()
   }, [router, load])
 
+  // ── PIN ──────────────────────────────────────────────────────────────────
   function tryUnlock() {
-    if (pinInput === SOW_PIN) { setUnlocked(true); setPinError(''); setPinInput('') }
-    else { setPinError('Wrong PIN — try 11111') }
+    if (pinInput === SOW_PIN) {
+      setUnlocked(true); setPinError(''); setPinInput('')
+    } else {
+      setPinError('Incorrect PIN')
+      setTimeout(() => setPinError(''), 2000)
+    }
+  }
+  function lock() {
+    setUnlocked(false)
+    setEditingId(null); setShowAddClient(false); setEditClientId(null)
   }
 
-  function startEdit(clientId: string) {
+  // ── SOW save ─────────────────────────────────────────────────────────────
+  function startEditSOW(clientId: string) {
     const existing = sow.find(s => s.clientId === clientId)
-    setEditForm(existing ? { ...EMPTY_ENTRY, ...existing } : { ...EMPTY_ENTRY })
+    setEditForm(existing ? { ...EMPTY_SOW, ...existing } : { ...EMPTY_SOW })
     setEditingId(clientId)
+    setShowAddClient(false); setEditClientId(null)
   }
-
-  async function handleSave() {
+  async function saveSOW() {
     if (!editingId) return
-    setSaving(true)
+    setSavingSOW(true)
     const entry: SOWEntry = { clientId: editingId, ...editForm }
     await fetch('/api/sow', {
       method: 'POST',
@@ -107,8 +130,43 @@ export default function PMSOWPage() {
       if (idx >= 0) { const n = [...prev]; n[idx] = entry; return n }
       return [...prev, entry]
     })
-    setEditingId(null)
-    setSaving(false)
+    setEditingId(null); setSavingSOW(false)
+  }
+
+  // ── Client management ────────────────────────────────────────────────────
+  async function addClient() {
+    if (!newClientName.trim()) return
+    setSavingClient(true)
+    const res = await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newClientName.trim() }),
+    })
+    const c = await res.json()
+    setClients(prev => [...prev, c])
+    setNewClientName(''); setShowAddClient(false); setSavingClient(false)
+  }
+  async function saveClientName() {
+    if (!editClientId || !editClientName.trim()) return
+    setSavingClient(true)
+    const client = clients.find(c => c.id === editClientId)!
+    await fetch('/api/clients', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...client, name: editClientName.trim() }),
+    })
+    setClients(prev => prev.map(c => c.id === editClientId ? { ...c, name: editClientName.trim() } : c))
+    setEditClientId(null); setSavingClient(false)
+  }
+  async function deleteClient(id: string, name: string) {
+    if (!confirm(`Delete client "${name}"? This cannot be undone.`)) return
+    await fetch('/api/clients', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    setClients(prev => prev.filter(c => c.id !== id))
+    setSOW(prev => prev.filter(s => s.clientId !== id))
   }
 
   if (!user) return null
@@ -118,7 +176,6 @@ export default function PMSOWPage() {
     const pb = sow.find(s => s.clientId === b.id)?.priority || 'Z'
     return pa !== pb ? pa.localeCompare(pb) : a.name.localeCompare(b.name)
   })
-
   const filtered = sorted.filter(c => {
     const e = sow.find(s => s.clientId === c.id)
     if (filterStatus   && (e?.status   || 'Active') !== filterStatus)   return false
@@ -137,7 +194,7 @@ export default function PMSOWPage() {
       <Topbar userName={user.name} userRole="pm" activeTab="/pm/sow" tabs={PM_TABS} />
       <div className="page">
 
-        {/* Header */}
+        {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="section-header" style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div className="section-title">Scope of Work</div>
@@ -150,29 +207,36 @@ export default function PMSOWPage() {
                 </span>}
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {!unlocked ? <>
-              <input type="password" value={pinInput} onChange={e => setPinInput(e.target.value)}
-                placeholder="Enter PIN to edit" onKeyDown={e => e.key === 'Enter' && tryUnlock()}
-                style={{ padding: '5px 9px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 7, width: 140, background: 'var(--surface)', color: 'var(--text)' }} />
-              <button className="btn btn-sm btn-primary" onClick={tryUnlock}>
-                <i className="ti ti-lock-open" style={{ marginRight: 4 }} />Unlock
-              </button>
-              {pinError && <span style={{ fontSize: 11, color: '#dc2626' }}>{pinError}</span>}
-            </> : <>
-              <button className="btn btn-sm" onClick={() => { setUnlocked(false); setEditingId(null) }}>
-                <i className="ti ti-lock" style={{ marginRight: 4 }} />Lock
-              </button>
-            </>}
+            {!unlocked ? (
+              <>
+                <input type="password" value={pinInput} onChange={e => setPinInput(e.target.value)}
+                  placeholder="PIN" onKeyDown={e => e.key === 'Enter' && tryUnlock()}
+                  style={{ padding: '5px 9px', fontSize: 12, border: `1px solid ${pinError ? '#dc2626' : 'var(--border)'}`, borderRadius: 7, width: 90, background: 'var(--surface)', color: 'var(--text)' }} />
+                <button className="btn btn-sm btn-primary" onClick={tryUnlock}>
+                  <i className="ti ti-lock-open" style={{ marginRight: 4 }} />Unlock
+                </button>
+                {pinError && <span style={{ fontSize: 11, color: '#dc2626' }}>{pinError}</span>}
+              </>
+            ) : (
+              <>
+                <button className="btn btn-sm btn-primary" onClick={() => { setShowAddClient(true); setEditingId(null); setEditClientId(null) }}>
+                  <i className="ti ti-plus" style={{ marginRight: 4 }} />Add Client
+                </button>
+                <button className="btn btn-sm" onClick={lock}>
+                  <i className="ti ti-lock" style={{ marginRight: 4 }} />Lock
+                </button>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Stats */}
+        {/* ── Stats ───────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           {[
-            { label: 'Active clients',    val: activeEntries.length,  color: 'var(--accent)' },
-            { label: 'Creatives required', val: totalRequired,         color: 'var(--text)' },
+            { label: 'Active clients',     val: activeEntries.length, color: 'var(--accent)' },
+            { label: 'Creatives required', val: totalRequired,        color: 'var(--text)' },
             { label: `Approved (${month.split(' ')[0] || 'this month'})`, val: totalApproved, color: totalApproved >= totalRequired ? '#4ede8c' : '#ff9b4e' },
-            { label: 'Completion',        val: `${overallPct}%`,       color: overallColor },
+            { label: 'Completion',         val: `${overallPct}%`,     color: overallColor },
           ].map(s => (
             <div key={s.label} className="card" style={{ padding: '10px 16px', textAlign: 'center', flex: '1 0 80px' }}>
               <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.val}</div>
@@ -181,7 +245,82 @@ export default function PMSOWPage() {
           ))}
         </div>
 
-        {/* Filters */}
+        {/* ── Add Client form ─────────────────────────────────────────────── */}
+        {showAddClient && unlocked && (
+          <div className="card" style={{ marginBottom: 12, padding: '14px 16px', border: '2px solid var(--accent)', display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>NEW CLIENT NAME</div>
+              <input className="field-input" style={{ width: '100%', padding: '6px 10px' }}
+                value={newClientName} onChange={e => setNewClientName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addClient()}
+                placeholder="e.g. New Brand Co" autoFocus />
+            </div>
+            <button className="btn btn-sm btn-primary" onClick={addClient} disabled={savingClient || !newClientName.trim()}>
+              {savingClient ? 'Adding…' : 'Add Client'}
+            </button>
+            <button className="btn btn-sm" onClick={() => { setShowAddClient(false); setNewClientName('') }}>Cancel</button>
+          </div>
+        )}
+
+        {/* ── SOW Edit form ────────────────────────────────────────────────── */}
+        {editingId && unlocked && (
+          <div className="card" style={{ marginBottom: 12, padding: 16, border: '2px solid var(--accent)' }}>
+            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--accent)', marginBottom: 12 }}>
+              Editing SOW — {clients.find(c => c.id === editingId)?.name}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 10 }}>
+              <div style={{ gridColumn: 'span 2' }}>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>SERVICE TYPE</div>
+                <input className="field-input" style={{ width: '100%', padding: '6px 8px' }}
+                  value={editForm.serviceType}
+                  onChange={e => setEditForm(p => ({ ...p, serviceType: e.target.value }))}
+                  placeholder="e.g. PPC + Organic" />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>CREATIVES / MO</div>
+                <input type="number" min="0" className="field-input" style={{ width: '100%', padding: '6px 8px', textAlign: 'center' }}
+                  value={editForm.totalCreatives}
+                  onChange={e => setEditForm(p => ({ ...p, totalCreatives: parseInt(e.target.value) || 0 }))} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>PRIORITY</div>
+                <select className="field-input" style={{ width: '100%', padding: '6px 8px' }}
+                  value={editForm.priority} onChange={e => setEditForm(p => ({ ...p, priority: e.target.value }))}>
+                  {['A','B','C','D'].map(p => <option key={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>STATUS</div>
+                <select className="field-input" style={{ width: '100%', padding: '6px 8px' }}
+                  value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))}>
+                  <option>Active</option><option>Inactive</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>BREAKDOWN BY TYPE</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {BREAKDOWN.map(f => (
+                  <div key={f.key} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>{f.label}</div>
+                    <input type="number" min="0" className="field-input"
+                      style={{ width: 54, textAlign: 'center', padding: '4px 6px', fontSize: 12 }}
+                      value={editForm[f.key]}
+                      onChange={e => setEditForm(p => ({ ...p, [f.key]: parseInt(e.target.value) || 0 }))} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
+              <button className="btn btn-sm btn-primary" onClick={saveSOW} disabled={savingSOW}>
+                {savingSOW ? 'Saving…' : <><i className="ti ti-check" style={{ marginRight: 4 }} />Save</>}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Filters ──────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <select className="field-input" style={{ padding: '6px 10px', fontSize: 12, minWidth: 130 }}
             value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
@@ -202,69 +341,10 @@ export default function PMSOWPage() {
           </span>
         </div>
 
-        {/* Inline edit form — shown above the table when editing */}
-        {editingId && (
-          <div className="card" style={{ marginBottom: 12, padding: 16, border: '2px solid var(--accent)' }}>
-            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--accent)', marginBottom: 12 }}>
-              Editing: {clients.find(c => c.id === editingId)?.name}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>SERVICE TYPE</div>
-                <input className="field-input" style={{ width: '100%', padding: '6px 8px' }}
-                  value={editForm.serviceType}
-                  onChange={e => setEditForm(p => ({ ...p, serviceType: e.target.value }))}
-                  placeholder="e.g. PPC + Organic" />
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>CREATIVES / MONTH</div>
-                <input type="number" min="0" className="field-input" style={{ width: '100%', padding: '6px 8px', textAlign: 'center' }}
-                  value={editForm.totalCreatives}
-                  onChange={e => setEditForm(p => ({ ...p, totalCreatives: parseInt(e.target.value) || 0 }))} />
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>PRIORITY</div>
-                <select className="field-input" style={{ width: '100%', padding: '6px 8px' }}
-                  value={editForm.priority} onChange={e => setEditForm(p => ({ ...p, priority: e.target.value }))}>
-                  {['A','B','C','D'].map(p => <option key={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>STATUS</div>
-                <select className="field-input" style={{ width: '100%', padding: '6px 8px' }}
-                  value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))}>
-                  <option>Active</option>
-                  <option>Inactive</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>BREAKDOWN BY TYPE</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {BREAKDOWN.map(f => (
-                  <div key={f.key} style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>{f.label}</div>
-                    <input type="number" min="0" className="field-input"
-                      style={{ width: 56, textAlign: 'center', padding: '4px 6px', fontSize: 12 }}
-                      value={editForm[f.key]}
-                      onChange={e => setEditForm(p => ({ ...p, [f.key]: parseInt(e.target.value) || 0 }))} />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="btn btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
-              <button className="btn btn-sm btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : <><i className="ti ti-check" style={{ marginRight: 4 }} />Save</>}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Table */}
+        {/* ── Table ────────────────────────────────────────────────────────── */}
         {loading
           ? <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>
-              <span className="spinner" style={{ marginRight: 8 }} />Loading SOW…
+              <span className="spinner" style={{ marginRight: 8 }} />Loading…
             </div>
           : <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ overflowX: 'auto' }}>
@@ -283,19 +363,45 @@ export default function PMSOWPage() {
                   </thead>
                   <tbody>
                     {filtered.map(client => {
-                      const entry = sow.find(s => s.clientId === client.id)
-                      const prog  = progress[client.name]
+                      const entry    = sow.find(s => s.clientId === client.id)
+                      const prog     = progress[client.name]
                       const approved = prog?.total || 0
                       const target   = entry?.totalCreatives || 0
                       const pct      = target > 0 ? Math.min(Math.round((approved/target)*100), 100) : 0
                       const pColor   = pct>=100?'#4ede8c':pct>=60?'#5b9cf6':pct>=30?'#ff9b4e':'#ff5f5f'
                       const prio     = entry?.priority || 'B'
-                      const prioStyle = PRIO_COLORS[prio] || PRIO_COLORS.B
+                      const ps       = PRIO_COLORS[prio] || PRIO_COLORS.B
                       const inactive = entry?.status === 'Inactive'
+                      const isEditingClient = editClientId === client.id
 
                       return (
-                        <tr key={client.id} style={{ borderBottom: '1px solid var(--border)', opacity: inactive ? 0.55 : 1, background: editingId===client.id ? 'var(--accent)11' : 'transparent' }}>
-                          <td style={{ padding: '11px 16px', fontWeight: 600 }}>{client.name}</td>
+                        <tr key={client.id} style={{ borderBottom: '1px solid var(--border)', opacity: inactive ? 0.55 : 1, background: editingId===client.id ? 'var(--surface2)' : 'transparent' }}>
+
+                          {/* Client name — editable inline when PIN unlocked */}
+                          <td style={{ padding: '10px 16px', fontWeight: 600 }}>
+                            {isEditingClient ? (
+                              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                <input className="field-input" style={{ padding: '3px 7px', fontSize: 12, width: 160 }}
+                                  value={editClientName} onChange={e => setEditClientName(e.target.value)}
+                                  onKeyDown={e => e.key === 'Enter' && saveClientName()} autoFocus />
+                                <button className="btn btn-sm btn-primary" style={{ padding: '3px 8px' }} onClick={saveClientName} disabled={savingClient}>✓</button>
+                                <button className="btn btn-sm" style={{ padding: '3px 8px' }} onClick={() => setEditClientId(null)}>✕</button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {client.name}
+                                {unlocked && (
+                                  <div style={{ display: 'flex', gap: 3, opacity: 0.5 }}>
+                                    <button title="Rename client" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '1px 3px', fontSize: 11, lineHeight: 1 }}
+                                      onClick={() => { setEditClientId(client.id); setEditClientName(client.name); setEditingId(null) }}>✎</button>
+                                    <button title="Delete client" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: '1px 3px', fontSize: 11, lineHeight: 1 }}
+                                      onClick={() => deleteClient(client.id, client.name)}>✕</button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
                           <td style={{ padding: '11px 12px', color: 'var(--text2)', fontSize: 12 }}>
                             {entry?.serviceType || <span style={{ color: 'var(--text3)' }}>—</span>}
                           </td>
@@ -324,7 +430,7 @@ export default function PMSOWPage() {
                             </> : <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>}
                           </td>
                           <td style={{ textAlign: 'center', padding: '11px 12px' }}>
-                            <span style={{ display: 'inline-block', width: 24, height: 24, lineHeight: '24px', borderRadius: 6, background: prioStyle.bg, color: prioStyle.color, fontWeight: 700, fontSize: 12, textAlign: 'center' }}>{prio}</span>
+                            <span style={{ display: 'inline-block', width: 24, height: 24, lineHeight: '24px', borderRadius: 6, background: ps.bg, color: ps.color, fontWeight: 700, fontSize: 12, textAlign: 'center' }}>{prio}</span>
                           </td>
                           <td style={{ textAlign: 'center', padding: '11px 12px' }}>
                             <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: inactive?'var(--border)':'#4ede8c22', color: inactive?'var(--text3)':'#4ede8c' }}>{entry?.status||'Active'}</span>
@@ -337,10 +443,10 @@ export default function PMSOWPage() {
                               {(!entry||BREAKDOWN.every(f=>!entry[f.key]))&&<span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>}
                             </div>
                           </td>
-                          <td style={{ padding: '11px 12px', textAlign: 'right' }}>
-                            {unlocked && (
-                              <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => startEdit(client.id)}>
-                                Edit
+                          <td style={{ padding: '11px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            {unlocked && !isEditingClient && (
+                              <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => startEditSOW(client.id)}>
+                                Edit SOW
                               </button>
                             )}
                           </td>
@@ -351,8 +457,7 @@ export default function PMSOWPage() {
                   <tfoot>
                     <tr style={{ background: '#fff9c4', borderTop: '2px solid #d97706' }}>
                       <td style={{ padding: '9px 16px', fontWeight: 700, fontSize: 13 }}>TOTALS</td>
-                      <td />
-                      <td style={{ textAlign: 'center', padding: '9px 12px', fontWeight: 700, fontSize: 13 }}>
+                      <td /><td style={{ textAlign: 'center', padding: '9px 12px', fontWeight: 700, fontSize: 13 }}>
                         {filtered.filter(c=>sow.find(s=>s.clientId===c.id)?.status==='Active').reduce((a,c)=>a+(sow.find(s=>s.clientId===c.id)?.totalCreatives||0),0)}
                       </td>
                       <td style={{ textAlign: 'center', padding: '9px 12px', fontWeight: 700, fontSize: 13, color: '#4ede8c' }}>
@@ -364,10 +469,6 @@ export default function PMSOWPage() {
                 </table>
               </div>
             </div>}
-
-        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text3)', textAlign: 'right' }}>
-          PIN to unlock editing: 11111
-        </div>
       </div>
     </>
   )
