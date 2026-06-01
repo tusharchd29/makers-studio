@@ -77,65 +77,38 @@ function SubmitForm() {
     setSubmitting(true); setError(''); setProgress(5); setUploadStep('Preparing upload…')
 
     try {
-      // Step 1 — get resumable upload URL from our server
-      const urlRes = await fetch('/api/upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId:      selectedTask.id,
-          taskName:    selectedTask.name,
-          clientName:  selectedTask.clientName,
-          fileName:    file.name,
-          mimeType:    file.type || 'application/octet-stream',
-        }),
-      })
-      if (!urlRes.ok) {
-        const d = await urlRes.json()
-        throw new Error(d.error || 'Failed to get upload slot')
-      }
-      const { uploadUrl, draftName, draftNumber } = await urlRes.json()
-
-      // Step 2 — upload directly to Google Drive via XHR (no Vercel limit, full progress)
+      // Single step — send file to our server, which uploads to Drive via service account
       setUploadStep('Uploading to Drive…')
-      const fileId = await new Promise<string>((resolve, reject) => {
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('taskId', selectedTask.id)
+      formData.append('taskName', selectedTask.name)
+      formData.append('clientName', selectedTask.clientName)
+
+      // Use XHR for progress tracking
+      const uploadResult = await new Promise<{ fileId: string; draftName: string; draftNumber: number; viewUrl: string }>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhrRef.current = xhr
         xhr.upload.onprogress = e => {
           if (e.lengthComputable) setProgress(10 + Math.round((e.loaded / e.total) * 80))
         }
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              // Drive returns file metadata JSON — parse id from it
-              const text = xhr.responseText.trim()
-              if (text) {
-                const data = JSON.parse(text)
-                if (data.id) { resolve(data.id); return }
-              }
-              // Fallback: extract file ID from the upload URL (uploadId param contains it)
-              // Drive also returns it in the Location header on 200 — extract from URL
-              const loc = xhr.getResponseHeader('Location') || ''
-              const match = loc.match(/\/files\/([^/?]+)/) || uploadUrl.match(/upload_id=([^&]+)/)
-              if (match) { resolve(match[1]); return }
-              reject(new Error('Could not extract file ID from Drive response'))
-            } catch (e) {
-              reject(new Error('Could not parse Drive response: ' + String(e)))
-            }
-          } else {
-            reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.responseText.slice(0,200)}`))
-          }
+          try {
+            const data = JSON.parse(xhr.responseText)
+            if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+            else reject(new Error(data.error || `Upload failed: ${xhr.status}`))
+          } catch { reject(new Error('Could not parse upload response')) }
         }
-        xhr.onerror = () => reject(new Error('Network error during upload'))
+        xhr.onerror = () => reject(new Error('Network error — check your connection'))
         xhr.onabort = () => reject(new Error('Upload cancelled'))
-        // fields=id tells Drive to return the file ID in the response body
-        xhr.open('PUT', uploadUrl + (uploadUrl.includes('?') ? '&' : '?') + 'fields=id,name')
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
-        xhr.send(file)
+        xhr.open('POST', '/api/upload-url')
+        xhr.send(formData)
       })
 
       setProgress(92); setUploadStep('Saving submission…')
 
-      // Step 3 — notify server to finalize (set permissions + save to Sheets)
+      // Step 2 — save submission record to Sheets
       const res = await fetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -145,9 +118,10 @@ function SubmitForm() {
           clientName:      selectedTask.clientName,
           deliverableType: selectedTask.deliverableType,
           designerNote:    notes,
-          fileId,
-          draftName,
-          draftNumber,
+          fileId:          uploadResult.fileId,
+          draftName:       uploadResult.draftName,
+          draftNumber:     uploadResult.draftNumber,
+          viewUrl:         uploadResult.viewUrl,
         }),
       })
       if (!res.ok) {
