@@ -9,7 +9,6 @@ const PM_TABS = [
   { label: 'Review Queue', href: '/pm/review',    icon: 'ti-eye-check' },
   { label: 'Tasks',        href: '/pm/tasks',     icon: 'ti-checklist' },
   { label: 'SOW',          href: '/pm/sow',       icon: 'ti-file-description' },
-  { label: 'Clients',      href: '/pm/clients',   icon: 'ti-building' },
 ]
 
 interface Submission { status: string; clientName: string; submittedAt: string; deliverableType: string }
