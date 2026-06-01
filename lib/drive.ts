@@ -1,16 +1,17 @@
-// Google Drive file upload helper — resumable uploads for large files (70MB+)
-
 import { google } from 'googleapis'
 
 const ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID!
 
-function getDriveClient() {
+function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
-  const auth = new google.auth.GoogleAuth({
+  return new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/drive'],
   })
-  return google.drive({ version: 'v3', auth })
+}
+
+function getDriveClient() {
+  return google.drive({ version: 'v3', auth: getAuth() })
 }
 
 // Ensure a subfolder exists under a parent; create if missing. Returns folder ID.
@@ -19,77 +20,97 @@ export async function ensureFolder(name: string, parentId: string): Promise<stri
   const res = await drive.files.list({
     q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
     fields: 'files(id)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   })
   if (res.data.files && res.data.files.length > 0) return res.data.files[0].id!
   const created = await drive.files.create({
     requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
     fields: 'id',
+    supportsAllDrives: true,
   })
   return created.data.id!
 }
 
-// Create a resumable upload session. Returns the upload URL.
-// Browser then PUTs the file directly to this URL (no size limit, progress tracking).
-export async function createResumableUploadUrl(
+// Upload file using raw multipart request — avoids service account quota error
+export async function uploadFileToDrive(
   fileName: string,
   mimeType: string,
+  buffer: Buffer,
   folderId: string,
 ): Promise<string> {
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  })
+  const auth = getAuth()
   const token = await auth.getAccessToken()
 
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId] })
+  const boundary = 'meraki_boundary_x7k9'
+
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`
+    ),
+    buffer,
+    Buffer.from(`\r\n--${boundary}--`),
+  ])
+
   const res = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true',
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-Upload-Content-Type': mimeType,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+        'Content-Length': String(body.length),
       },
-      body: JSON.stringify({ name: fileName, parents: [folderId] }),
+      body,
     }
   )
-  if (!res.ok) throw new Error(`Failed to create resumable session: ${await res.text()}`)
-  const uploadUrl = res.headers.get('location')
-  if (!uploadUrl) throw new Error('No upload URL in response')
-  return uploadUrl
-}
 
-// After upload completes, get the file ID and make it readable by link.
-// Pass the upload URL — Drive returns the file metadata on final chunk.
-export async function finalizeUpload(fileId: string): Promise<string> {
-  if (!fileId) throw new Error('finalizeUpload: fileId is empty')
-  const drive = getDriveClient()
-  // Make file readable by anyone with the link
-  try {
-    await drive.permissions.create({
-      fileId,
-      requestBody: { role: 'reader', type: 'anyone' },
-    })
-  } catch (e) {
-    // Permission may already exist — continue
-    console.warn('Permission create warning:', e)
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Drive upload failed: ${err}`)
   }
-  const viewUrl = `https://drive.google.com/file/d/${fileId}/view`
-  return viewUrl
+
+  const data = await res.json()
+  return data.id as string
 }
 
-// Get folder ID for a client/task path, creating as needed
+// Make file readable by anyone with the link
+export async function makePublic(fileId: string): Promise<string> {
+  const auth = getAuth()
+  const token = await auth.getAccessToken()
+
+  await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions?supportsAllDrives=true`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+  })
+
+  return `https://drive.google.com/file/d/${fileId}/view`
+}
+
+// Get folder ID for client/task path, creating as needed
 export async function getOrCreateTaskFolder(clientName: string, taskName: string): Promise<string> {
   const clientFolder = await ensureFolder(clientName, ROOT_FOLDER_ID)
-  const taskFolder   = await ensureFolder(taskName, clientFolder)
-  return taskFolder
+  return await ensureFolder(taskName, clientFolder)
 }
 
-// Delete a file from Drive by fileId (best-effort)
+// Delete a file from Drive (best-effort)
 export async function deleteFile(fileId: string): Promise<void> {
   try {
     const drive = getDriveClient()
-    await drive.files.delete({ fileId })
+    await drive.files.delete({ fileId, supportsAllDrives: true })
   } catch { /* ignore */ }
+}
+
+// Legacy — kept for compatibility
+export async function finalizeUpload(fileId: string): Promise<string> {
+  return makePublic(fileId)
+}
+
+export async function createResumableUploadUrl(): Promise<string> {
+  throw new Error('Use uploadFileToDrive instead')
 }
