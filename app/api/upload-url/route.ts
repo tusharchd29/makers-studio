@@ -4,7 +4,18 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
 import { getSubmissionByTaskId } from '@/lib/store'
-import { getOrCreateTaskFolder, createResumableUploadUrl } from '@/lib/drive'
+import { getOrCreateTaskFolder } from '@/lib/drive'
+import { google } from 'googleapis'
+import { Readable } from 'stream'
+
+function getDriveClient() {
+  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  })
+  return google.drive({ version: 'v3', auth })
+}
 
 export async function POST(req: NextRequest) {
   const token = req.cookies.get('ms_session')?.value
@@ -12,39 +23,58 @@ export async function POST(req: NextRequest) {
   const user = await verifySession(token)
   if (!user || user.role !== 'designer') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json()
-  const { taskId, taskName, clientName, fileName, mimeType } = body
-
-  if (!taskId || !taskName || !clientName || !fileName || !mimeType)
-    return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
-
-  // Determine draft number
-  const existing    = await getSubmissionByTaskId(taskId)
-  const draftNumber = existing ? existing.draftNumber + 1 : 1
-  const ext         = fileName.split('.').pop() || 'bin'
-  const draftName   = `${taskName} - draft${draftNumber}.${ext}`
-
-  // Log the folder ID being used
-  const folderId_env = process.env.DRIVE_ROOT_FOLDER_ID || 'NOT_SET'
-  console.log('DRIVE_ROOT_FOLDER_ID:', folderId_env)
-
-  let folderId: string
   try {
-    folderId = await getOrCreateTaskFolder(clientName, taskName)
+    const formData = await req.formData()
+    const file     = formData.get('file') as File | null
+    const taskId   = formData.get('taskId') as string
+    const taskName = formData.get('taskName') as string
+    const clientName = formData.get('clientName') as string
+
+    if (!file || !taskId || !taskName || !clientName)
+      return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+
+    // Draft number
+    const existing    = await getSubmissionByTaskId(taskId)
+    const draftNumber = existing ? existing.draftNumber + 1 : 1
+    const ext         = file.name.split('.').pop() || 'bin'
+    const draftName   = `${taskName} - draft${draftNumber}.${ext}`
+
+    // Get/create folder
+    const folderId = await getOrCreateTaskFolder(clientName, taskName)
+
+    // Upload to Drive via service account (server-side, no CORS issues)
+    const drive    = getDriveClient()
+    const arrayBuf = await file.arrayBuffer()
+    const buffer   = Buffer.from(arrayBuf)
+    const stream   = Readable.from(buffer)
+
+    const driveRes = await drive.files.create({
+      requestBody: {
+        name: draftName,
+        parents: [folderId],
+      },
+      media: {
+        mimeType: file.type || 'application/octet-stream',
+        body: stream,
+      },
+      fields: 'id,name',
+    })
+
+    const fileId = driveRes.data.id!
+
+    // Make file readable by anyone with the link
+    await drive.permissions.create({
+      fileId,
+      requestBody: { role: 'reader', type: 'anyone' },
+    })
+
+    const viewUrl = `https://drive.google.com/file/d/${fileId}/view`
+
+    return NextResponse.json({ fileId, draftName, draftNumber, viewUrl })
+
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    console.error('Drive folder error:', msg)
-    return NextResponse.json({ error: `Drive error: ${msg}` }, { status: 500 })
+    console.error('Upload error:', msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
-
-  let uploadUrl: string
-  try {
-    uploadUrl = await createResumableUploadUrl(draftName, mimeType, folderId)
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    console.error('Upload URL error:', msg)
-    return NextResponse.json({ error: `Upload session error: ${msg}` }, { status: 500 })
-  }
-
-  return NextResponse.json({ uploadUrl, draftName, draftNumber })
 }
