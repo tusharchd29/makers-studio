@@ -106,17 +106,29 @@ function SubmitForm() {
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              const data = JSON.parse(xhr.responseText)
-              resolve(data.id)
-            } catch { reject(new Error('Could not parse Drive response')) }
+              // Drive returns file metadata JSON — parse id from it
+              const text = xhr.responseText.trim()
+              if (text) {
+                const data = JSON.parse(text)
+                if (data.id) { resolve(data.id); return }
+              }
+              // Fallback: extract file ID from the upload URL (uploadId param contains it)
+              // Drive also returns it in the Location header on 200 — extract from URL
+              const loc = xhr.getResponseHeader('Location') || ''
+              const match = loc.match(/\/files\/([^/?]+)/) || uploadUrl.match(/upload_id=([^&]+)/)
+              if (match) { resolve(match[1]); return }
+              reject(new Error('Could not extract file ID from Drive response'))
+            } catch (e) {
+              reject(new Error('Could not parse Drive response: ' + String(e)))
+            }
           } else {
-            reject(new Error(`Upload failed: ${xhr.status}`))
+            reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.responseText.slice(0,200)}`))
           }
         }
         xhr.onerror = () => reject(new Error('Network error during upload'))
         xhr.onabort = () => reject(new Error('Upload cancelled'))
-        // Append fields=id so Drive returns the file ID
-        xhr.open('PUT', uploadUrl + (uploadUrl.includes('?') ? '&' : '?') + 'fields=id')
+        // fields=id tells Drive to return the file ID in the response body
+        xhr.open('PUT', uploadUrl + (uploadUrl.includes('?') ? '&' : '?') + 'fields=id,name')
         xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
         xhr.send(file)
       })
