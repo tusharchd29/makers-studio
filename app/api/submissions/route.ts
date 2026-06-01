@@ -8,7 +8,7 @@ import {
   appendRevision, updateRevision, getRevisionsByTaskId,
   getTasks, saveApprovedFile,
 } from '@/lib/store'
-import { finalizeUpload, deleteFile } from '@/lib/drive'
+import { deleteFile } from '@/lib/drive'
 import { randomUUID } from 'crypto'
 
 async function getUser(req: NextRequest) {
@@ -31,11 +31,12 @@ export async function POST(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'designer') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { taskId, taskName, clientName, deliverableType, designerNote, fileId, draftName, draftNumber } = await req.json()
+  const body = await req.json()
+  const { taskId, taskName, clientName, deliverableType, designerNote, fileId, draftName, draftNumber } = body
   if (!taskId || !fileId) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
-  // Finalize Drive file — set public read permission, get view URL
-  const viewUrl = await finalizeUpload(fileId)
+  // viewUrl already set during upload — use it directly, or derive from fileId
+  const viewUrl = (body.viewUrl as string) || `https://drive.google.com/file/d/${fileId}/view`
 
   const now          = new Date().toISOString()
   const existing     = await getSubmissionByTaskId(taskId)
