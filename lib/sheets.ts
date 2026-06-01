@@ -23,7 +23,7 @@ export const TABS = {
   submissions:  { name: 'submissions',  headers: ['id','task_id','task_name','client_name','designer_name','deliverable_type','file_type','file_name','file_id','view_url','draft_number','status','designer_note','pm_comment','submitted_at','reviewed_at','reviewed_by'] },
   revisions:    { name: 'revisions',    headers: ['id','task_id','task_name','client_name','designer_name','draft_number','file_id','view_url','designer_note','pm_comment','status','submitted_at','reviewed_at','reviewed_by'] },
   approved:     { name: 'approved',     headers: ['id','task_id','task_name','client_name','designer_name','sow_month','deliverable_type','file_id','view_url','total_drafts','approved_at','approved_by'] },
-  activity_log: { name: 'activity log', headers: ['timestamp','user','action','entity','detail'] },
+  // activity log is managed separately - not in TABS to avoid batchUpdate issues
 }
 
 type TabName = keyof typeof TABS
@@ -177,15 +177,28 @@ function colLetter(n: number): string {
 }
 
 // ── Activity Log ──────────────────────────────────────────────────────────
-// Call this anywhere to record an auditable event.
-// action examples: 'SOW Updated', 'Task Created', 'Draft Submitted', 'Approved', 'Rejected', 'Client Added'
 export async function logActivity(user: string, action: string, entity: string, detail: string) {
   try {
     const sheets = getSheetsClient()
+    // Ensure Activity Log tab exists
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+    const exists = (meta.data.sheets || []).some((s: sheets_v4.Schema$Sheet) => s.properties?.title === 'Activity Log')
+    if (!exists) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: SPREADSHEET_ID,
+        requestBody: { requests: [{ addSheet: { properties: { title: 'Activity Log' } } }] }
+      })
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'Activity Log!A1',
+        valueInputOption: 'RAW',
+        requestBody: { values: [['Timestamp', 'User', 'Action', 'Entity', 'Detail']] }
+      })
+    }
     const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'activity log!A1',
+      range: 'Activity Log!A1',
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: [[timestamp, user, action, entity, detail]] },
