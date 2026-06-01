@@ -1,6 +1,6 @@
 // Thin wrappers around sheets.ts — same API as before but persistent via Google Sheets
 
-import { readAll, appendRow, upsertRow, deleteRow, updateRow, ensureAllTabs } from './sheets'
+import { readAll, appendRow, upsertRow, deleteRow, updateRow, ensureAllTabs, logActivity } from './sheets'
 import { Task, SOWEntry, Client, Submission, RevisionEntry, ApprovedFile, CLIENTS } from './types'
 import { SEEDED_SOW } from './seedSOW'
 
@@ -17,11 +17,9 @@ export async function getClients(): Promise<Client[]> {
   await init()
   const rows = await readAll<{ id: string; name: string; drive_folder_id: string }>('clients')
   if (rows.length === 0) {
-    // Seed all 20 clients
     for (const c of CLIENTS) await appendRow('clients', { id: c.id, name: c.name, drive_folder_id: '' })
     return CLIENTS
   }
-  // Ensure all CLIENTS present; also fix stale names (e.g. Outlanders → Outlander)
   const nameById = Object.fromEntries(CLIENTS.map(c => [c.id, c.name]))
   const existingIds = new Set(rows.map(r => r.id))
   for (const c of CLIENTS) {
@@ -29,7 +27,6 @@ export async function getClients(): Promise<Client[]> {
       await appendRow('clients', { id: c.id, name: c.name, drive_folder_id: '' })
     }
   }
-  // Fix any name mismatches (rename stale rows to match CLIENTS)
   const nameUpdates: Promise<boolean>[] = []
   for (const row of rows) {
     if (nameById[row.id] && row.name !== nameById[row.id]) {
@@ -37,17 +34,18 @@ export async function getClients(): Promise<Client[]> {
     }
   }
   if (nameUpdates.length) await Promise.all(nameUpdates)
-  // Re-read after fixes
   const fresh = await readAll<{ id: string; name: string; drive_folder_id: string }>('clients')
   return fresh.map(r => ({ id: r.id, name: r.name, driveFolderId: r.drive_folder_id }))
 }
-export async function saveClient(client: Client) {
+export async function saveClient(client: Client, by = 'PM') {
   await init()
   await upsertRow('clients', 'id', client.id, { id: client.id, name: client.name, drive_folder_id: client.driveFolderId || '' })
+  await logActivity(by, 'Client Saved', client.name, `id: ${client.id}`)
 }
-export async function deleteClient(id: string) {
+export async function deleteClient(id: string, by = 'PM') {
   await init()
   await deleteRow('clients', 'id', id)
+  await logActivity(by, 'Client Deleted', id, '')
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────
@@ -71,10 +69,12 @@ export async function saveTask(task: Task) {
     brief: task.brief || '', created_at: task.createdAt,
     created_by: task.createdBy, sow_month: task.sowMonth || '',
   })
+  await logActivity(task.createdBy || 'PM', 'Task Created', task.name, `client: ${task.clientName}, assigned: ${task.assignedTo}, deadline: ${task.deadline}`)
 }
-export async function deleteTask(id: string) {
+export async function deleteTask(id: string, by = 'PM') {
   await init()
   await deleteRow('tasks', 'id', id)
+  await logActivity(by, 'Task Deleted', id, '')
 }
 
 // ── SOW ───────────────────────────────────────────────────────────────────
@@ -91,7 +91,6 @@ export async function getSOW(): Promise<SOWEntry[]> {
     })
     return SEEDED_SOW
   }
-  // Ensure all seeded clients are present (add missing ones)
   const existingClientIds = new Set(rows.map(r => r.client_id))
   for (const e of SEEDED_SOW) {
     if (!existingClientIds.has(e.clientId)) {
@@ -113,7 +112,7 @@ export async function getSOW(): Promise<SOWEntry[]> {
     youtubeShorts: Number(r.youtube_shorts),
   }))
 }
-export async function saveSOWEntry(entry: SOWEntry) {
+export async function saveSOWEntry(entry: SOWEntry, by = 'PM') {
   await init()
   await upsertRow('sow', 'client_id', entry.clientId, {
     client_id: entry.clientId, service_type: entry.serviceType,
@@ -122,6 +121,7 @@ export async function saveSOWEntry(entry: SOWEntry) {
     statics: entry.statics, videos: entry.videos, photos: entry.photos,
     carousels: entry.carousels, youtube_shorts: entry.youtubeShorts,
   })
+  await logActivity(by, 'SOW Updated', entry.clientId, `service: ${entry.serviceType}, creatives: ${entry.totalCreatives}, priority: ${entry.priority}, status: ${entry.status}`)
 }
 
 // ── Submissions ───────────────────────────────────────────────────────────
@@ -155,12 +155,13 @@ export async function saveSubmission(sub: Submission) {
     reviewed_at: sub.reviewedAt || '',
     reviewed_by: sub.reviewedBy || '',
   })
+  await logActivity(sub.designerName, 'Draft Submitted', sub.taskName, `client: ${sub.clientName}, draft #${sub.draftNumber}, file: ${sub.fileName}`)
 }
 export async function getSubmissionByTaskId(taskId: string): Promise<Submission | undefined> {
   const subs = await getSubmissions()
   return subs.find(s => s.taskId === taskId)
 }
-export async function updateSubmission(taskId: string, patch: Partial<Submission>) {
+export async function updateSubmission(taskId: string, patch: Partial<Submission>, by = 'PM') {
   await init()
   const mapped: Record<string, unknown> = {}
   if (patch.status       !== undefined) mapped.status        = patch.status
@@ -174,6 +175,9 @@ export async function updateSubmission(taskId: string, patch: Partial<Submission
   if (patch.designerNote !== undefined) mapped.designer_note = patch.designerNote
   if (patch.submittedAt  !== undefined) mapped.submitted_at  = patch.submittedAt
   await updateRow('submissions', 'task_id', taskId, mapped)
+  if (patch.status) {
+    await logActivity(by, `Submission ${patch.status}`, taskId, `status → ${patch.status}${patch.pmComment ? ', comment: '+patch.pmComment : ''}`)
+  }
 }
 
 // ── Revisions ─────────────────────────────────────────────────────────────
@@ -206,7 +210,6 @@ export async function appendRevision(rev: RevisionEntry) {
 }
 export async function updateRevision(taskId: string, draftNumber: number, patch: Partial<RevisionEntry>) {
   await init()
-  // Find the specific revision row by task_id + draft_number
   const rows = await readAll<Record<string, string>>('revisions')
   const row  = rows.find(r => r.task_id === taskId && Number(r.draft_number) === draftNumber)
   if (!row) return
@@ -235,7 +238,7 @@ export async function getApprovedFiles(): Promise<ApprovedFile[]> {
     approvedAt: r.approved_at, approvedBy: r.approved_by,
   }))
 }
-export async function saveApprovedFile(file: ApprovedFile) {
+export async function saveApprovedFile(file: ApprovedFile, by = 'PM') {
   await init()
   await upsertRow('approved', 'task_id', file.taskId, {
     id: file.id, task_id: file.taskId, task_name: file.taskName,
@@ -245,4 +248,5 @@ export async function saveApprovedFile(file: ApprovedFile) {
     total_drafts: file.totalDrafts,
     approved_at: file.approvedAt, approved_by: file.approvedBy,
   })
+  await logActivity(by, 'Creative Approved', file.taskName, `client: ${file.clientName}, designer: ${file.designerName}, drafts: ${file.totalDrafts}, month: ${file.sowMonth}`)
 }
