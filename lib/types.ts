@@ -55,19 +55,28 @@ export interface ApprovedFile {
   totalDrafts: number; approvedAt: string; approvedBy: string
 }
 
+// All 20 clients matching Postings app
 export const CLIENTS: Client[] = [
-  { id: 'asia-cosmetic',     name: 'Asia Cosmetic' },
-  { id: 'courtesy-honda',    name: 'Courtesy Honda' },
-  { id: 'faith-diagnostic',  name: 'Faith Diagnostic' },
-  { id: 'pratha-pre-school', name: 'Pratha Pre School' },
-  { id: 'pyarababy',         name: 'PyaraBaby' },
-  { id: 'shecare-360',       name: 'SheCare 360' },
-  { id: 'ssw',               name: 'SSW' },
-  { id: 'berkeley',          name: 'Berkeley' },
-  { id: 'manthan',           name: 'Manthan' },
-  { id: 'veriseek',          name: 'VeriSeek' },
-  { id: 'summarizex',        name: 'SummarizeX' },
-  { id: 'outlanders',        name: 'Outlanders' },
+  { id: 'summarizex',         name: 'SummarizeX' },
+  { id: 'pyarababy',          name: 'PyaraBaby' },
+  { id: 'courtesy-honda',     name: 'Courtesy Honda' },
+  { id: 'shecare',            name: 'SheCare' },
+  { id: 'ssw',                name: 'SSW' },
+  { id: 'volvo',              name: 'Volvo' },
+  { id: 'veriseek',           name: 'VeriSeek' },
+  { id: 'asia-cosmetic',      name: 'Asia Cosmetic' },
+  { id: 'lmk-finance',        name: 'LMK Finance' },
+  { id: 'honda',              name: 'Honda' },
+  { id: 'faith-diagnostic',   name: 'Faith Diagnostic' },
+  { id: 'pratha-pre-school',  name: 'Pratha Pre School' },
+  { id: 'tress-lounge',       name: 'Tress Lounge' },
+  { id: 'north-international',name: 'North International' },
+  { id: 'manthan',            name: 'Manthan Work Spaces' },
+  { id: 'softradix',          name: 'Softradix' },
+  { id: 'outlanders',         name: 'Outlanders' },
+  { id: 'kia',                name: 'Kia' },
+  { id: 'social-magnet',      name: 'Social Magnet' },
+  { id: 'body-temple',        name: 'Body Temple' },
 ]
 
 export const USERS = [
