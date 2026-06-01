@@ -17,11 +17,20 @@ export async function getClients(): Promise<Client[]> {
   await init()
   const rows = await readAll<{ id: string; name: string; drive_folder_id: string }>('clients')
   if (rows.length === 0) {
-    // Seed default clients
+    // Seed all 20 clients
     for (const c of CLIENTS) await appendRow('clients', { id: c.id, name: c.name, drive_folder_id: '' })
     return CLIENTS
   }
-  return rows.map(r => ({ id: r.id, name: r.name, driveFolderId: r.drive_folder_id }))
+  // Ensure any newly added clients from CLIENTS are present (upsert by id)
+  const existingIds = new Set(rows.map(r => r.id))
+  for (const c of CLIENTS) {
+    if (!existingIds.has(c.id)) {
+      await appendRow('clients', { id: c.id, name: c.name, drive_folder_id: '' })
+    }
+  }
+  // Re-read after potential additions
+  const fresh = await readAll<{ id: string; name: string; drive_folder_id: string }>('clients')
+  return fresh.map(r => ({ id: r.id, name: r.name, driveFolderId: r.drive_folder_id }))
 }
 export async function saveClient(client: Client) {
   await init()
