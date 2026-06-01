@@ -82,6 +82,19 @@ export async function getSOW(): Promise<SOWEntry[]> {
     })
     return SEEDED_SOW
   }
+  // Ensure all seeded clients are present (add missing ones)
+  const existingClientIds = new Set(rows.map(r => r.client_id))
+  for (const e of SEEDED_SOW) {
+    if (!existingClientIds.has(e.clientId)) {
+      await appendRow('sow', {
+        client_id: e.clientId, service_type: e.serviceType,
+        total_creatives: e.totalCreatives, priority: e.priority,
+        status: e.status, reels: e.reels, stories: e.stories,
+        statics: e.statics, videos: e.videos, photos: e.photos,
+        carousels: e.carousels, youtube_shorts: e.youtubeShorts,
+      })
+    }
+  }
   return rows.map(r => ({
     clientId: r.client_id, serviceType: r.service_type,
     totalCreatives: Number(r.total_creatives), priority: r.priority,
