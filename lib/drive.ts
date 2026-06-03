@@ -1,57 +1,26 @@
 import { google } from 'googleapis'
+import { JWT } from 'google-auth-library'
 
-// The Google account whose Drive quota will be used (must be a Workspace account
-// with domain-wide delegation granted to the service account, OR use OAuth tokens).
-// Falls back to direct OAuth if GOOGLE_REFRESH_TOKEN is set.
-const IMPERSONATE_USER = process.env.GOOGLE_IMPERSONATE_USER || ''
-const REFRESH_TOKEN    = process.env.GOOGLE_REFRESH_TOKEN || ''
-const OAUTH_CLIENT_ID  = process.env.GOOGLE_OAUTH_CLIENT_ID || ''
-const OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET || ''
-const ROOT_FOLDER_NAME = process.env.DRIVE_ROOT_FOLDER_NAME || 'Makers Studio'
+const ROOT_FOLDER_NAME    = process.env.DRIVE_ROOT_FOLDER_NAME || 'Makers Studio'
+const IMPERSONATE_USER    = process.env.GOOGLE_IMPERSONATE_USER || ''
 
-function getAuth() {
+function getJWT(): JWT {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON env var is not set')
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
-
-  // Option A: OAuth refresh token (no Workspace needed — just authorize once)
-  if (REFRESH_TOKEN && OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET) {
-    return new google.auth.OAuth2(OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET)
-  }
-
-  // Option B: Service account with domain-wide delegation (Workspace only)
-  return new google.auth.GoogleAuth({
-    credentials,
+  if (!IMPERSONATE_USER) throw new Error('GOOGLE_IMPERSONATE_USER env var is not set (e.g. tech@merakiads.in)')
+  const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
+  return new JWT({
+    email: creds.client_email,
+    key: creds.private_key,
     scopes: ['https://www.googleapis.com/auth/drive'],
-    ...(IMPERSONATE_USER ? { clientOptions: { subject: IMPERSONATE_USER } } : {}),
+    subject: IMPERSONATE_USER,  // impersonate this user — files land in their Drive
   })
 }
 
 async function getAccessToken(): Promise<string> {
-  // Option A: OAuth refresh token
-  if (REFRESH_TOKEN && OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET) {
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: OAUTH_CLIENT_ID,
-        client_secret: OAUTH_CLIENT_SECRET,
-        refresh_token: REFRESH_TOKEN,
-        grant_type: 'refresh_token',
-      }),
-    })
-    if (!res.ok) {
-      const err = await res.text()
-      throw new Error(`OAuth token refresh failed: ${err}`)
-    }
-    const data = await res.json()
-    return data.access_token as string
-  }
-
-  // Option B: Service account (with or without impersonation)
-  const auth = getAuth() as google.auth.GoogleAuth
-  const token = await auth.getAccessToken()
-  if (!token) throw new Error('Could not obtain access token')
-  return token as string
+  const jwt = getJWT()
+  const { token } = await jwt.getAccessToken()
+  if (!token) throw new Error('Could not obtain access token via impersonation')
+  return token
 }
 
 async function findFolder(token: string, name: string, parentId: string | null): Promise<string | null> {
@@ -87,7 +56,10 @@ async function getRootFolderId(): Promise<string> {
   if (cachedRootId) return cachedRootId
   const token = await getAccessToken()
   let id = await findFolder(token, ROOT_FOLDER_NAME, null)
-  if (!id) id = await createFolder(token, ROOT_FOLDER_NAME, null)
+  if (!id) {
+    id = await createFolder(token, ROOT_FOLDER_NAME, null)
+    console.log(`Created root folder "${ROOT_FOLDER_NAME}" in ${IMPERSONATE_USER}'s Drive (id: ${id})`)
+  }
   cachedRootId = id
   return id
 }
@@ -138,7 +110,10 @@ export async function getOrCreateTaskFolder(clientName: string, taskName: string
 export async function deleteFile(fileId: string): Promise<void> {
   try {
     const token = await getAccessToken()
-    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    })
   } catch { /* ignore */ }
 }
 
