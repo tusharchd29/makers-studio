@@ -3,8 +3,13 @@ import { google } from 'googleapis'
 const ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID!
 
 function getAuth() {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON env var is not set')
+  }
+  if (!process.env.DRIVE_ROOT_FOLDER_ID) {
+    throw new Error('DRIVE_ROOT_FOLDER_ID env var is not set')
+  }
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
-  // If GOOGLE_IMPERSONATE_USER is set, impersonate that user (requires domain-wide delegation)
   const impersonate = process.env.GOOGLE_IMPERSONATE_USER
   return new google.auth.GoogleAuth({
     credentials,
@@ -19,13 +24,25 @@ function getDriveClient() {
 
 export async function ensureFolder(name: string, parentId: string): Promise<string> {
   const drive = getDriveClient()
-  const res = await drive.files.list({
-    q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
-    fields: 'files(id)',
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  })
-  if (res.data.files && res.data.files.length > 0) return res.data.files[0].id!
+  try {
+    const res = await drive.files.list({
+      q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
+      fields: 'files(id)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    })
+    if (res.data.files && res.data.files.length > 0) return res.data.files[0].id!
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('File not found') || msg.includes('404')) {
+      throw new Error(
+        `Google Drive folder not accessible (id: ${parentId}). ` +
+        `Make sure the service account has Editor access to the folder. ` +
+        `Service account: ${JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}').client_email || 'unknown'}`
+      )
+    }
+    throw e
+  }
   const created = await drive.files.create({
     requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
     fields: 'id',
@@ -48,6 +65,10 @@ export async function uploadFileToDrive(
     `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,driveId&supportsAllDrives=true`,
     { headers: { Authorization: `Bearer ${token}` } }
   )
+  if (!folderRes.ok) {
+    const errText = await folderRes.text()
+    throw new Error(`Cannot access Drive folder (${folderId}): ${errText}`)
+  }
   const folderMeta = await folderRes.json()
   const driveId    = folderMeta.driveId // undefined for personal drive folders
 
