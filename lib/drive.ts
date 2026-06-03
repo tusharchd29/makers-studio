@@ -1,10 +1,13 @@
 import { google } from 'googleapis'
 
-const ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID!
+// Root folder name — service account will create/own this in its own Drive
+const ROOT_FOLDER_NAME = process.env.DRIVE_ROOT_FOLDER_NAME || 'Makers Studio'
+
+// Optional: if you want files to also be shared back to a human Google account
+const SHARE_WITH_EMAIL = process.env.DRIVE_SHARE_WITH_EMAIL || ''
 
 function getAuth() {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON env var is not set')
-  if (!process.env.DRIVE_ROOT_FOLDER_ID) throw new Error('DRIVE_ROOT_FOLDER_ID env var is not set')
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
   return new google.auth.GoogleAuth({
     credentials,
@@ -19,43 +22,82 @@ async function getAccessToken(): Promise<string> {
   return token as string
 }
 
-// Find a subfolder by name under a parent, or create it.
-// Uses Drive REST API directly to support both My Drive and Shared Drives.
-export async function ensureFolder(name: string, parentId: string): Promise<string> {
-  const token = await getAccessToken()
-
-  // Search for existing folder
+// Find folder by name under a parent (or at root if parentId is null)
+async function findFolder(token: string, name: string, parentId: string | null): Promise<string | null> {
+  const parentClause = parentId ? `and '${parentId}' in parents` : `and 'root' in parents`
   const q = encodeURIComponent(
-    `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+    `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' ${parentClause} and trashed=false`
   )
-  const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`,
     { headers: { Authorization: `Bearer ${token}` } }
   )
-  if (!searchRes.ok) {
-    const err = await searchRes.text()
-    throw new Error(`Drive folder search failed (parent: ${parentId}): ${err}`)
-  }
-  const searchData = await searchRes.json()
-  if (searchData.files && searchData.files.length > 0) {
-    return searchData.files[0].id as string
-  }
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.files?.[0]?.id ?? null
+}
 
-  // Create folder
-  const createRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id`,
+// Create a folder (under parentId, or at root if null)
+async function createFolder(token: string, name: string, parentId: string | null): Promise<string> {
+  const body: Record<string, unknown> = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+  }
+  if (parentId) body.parents = [parentId]
+
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?fields=id`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+      body: JSON.stringify(body),
     }
   )
-  if (!createRes.ok) {
-    const err = await createRes.text()
-    throw new Error(`Drive folder create failed (parent: ${parentId}, name: ${name}): ${err}`)
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to create folder "${name}": ${err}`)
   }
-  const created = await createRes.json()
-  return created.id as string
+  const data = await res.json()
+
+  // Optionally share back with human account so you can browse it
+  if (SHARE_WITH_EMAIL && !parentId) {
+    await shareWithEmail(token, data.id, SHARE_WITH_EMAIL).catch(() => {})
+  }
+
+  return data.id as string
+}
+
+async function shareWithEmail(token: string, fileId: string, email: string): Promise<void> {
+  await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'writer', type: 'user', emailAddress: email }),
+    }
+  )
+}
+
+// Cache root folder id in memory (resets on cold start, but that's fine)
+let cachedRootId: string | null = null
+
+async function getRootFolderId(): Promise<string> {
+  if (cachedRootId) return cachedRootId
+  const token = await getAccessToken()
+  let id = await findFolder(token, ROOT_FOLDER_NAME, null)
+  if (!id) {
+    id = await createFolder(token, ROOT_FOLDER_NAME, null)
+    console.log(`Created root folder "${ROOT_FOLDER_NAME}" (id: ${id}) in service account Drive`)
+  }
+  cachedRootId = id
+  return id
+}
+
+export async function ensureFolder(name: string, parentId: string): Promise<string> {
+  const token = await getAccessToken()
+  let id = await findFolder(token, name, parentId)
+  if (!id) id = await createFolder(token, name, parentId)
+  return id
 }
 
 export async function uploadFileToDrive(
@@ -65,7 +107,6 @@ export async function uploadFileToDrive(
   folderId: string,
 ): Promise<string> {
   const token = await getAccessToken()
-
   const metadata = { name: fileName, parents: [folderId] }
   const boundary = 'meraki_boundary_x7k9'
   const metaStr  = JSON.stringify(metadata)
@@ -77,7 +118,7 @@ export async function uploadFileToDrive(
   ])
 
   const res = await fetch(
-    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true`,
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`,
     {
       method: 'POST',
       headers: {
@@ -100,7 +141,7 @@ export async function uploadFileToDrive(
 export async function makePublic(fileId: string): Promise<string> {
   const token = await getAccessToken()
   await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions?supportsAllDrives=true`,
+    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -111,7 +152,8 @@ export async function makePublic(fileId: string): Promise<string> {
 }
 
 export async function getOrCreateTaskFolder(clientName: string, taskName: string): Promise<string> {
-  const clientFolder = await ensureFolder(clientName, ROOT_FOLDER_ID)
+  const rootId = await getRootFolderId()
+  const clientFolder = await ensureFolder(clientName, rootId)
   return await ensureFolder(taskName, clientFolder)
 }
 
@@ -119,7 +161,7 @@ export async function deleteFile(fileId: string): Promise<void> {
   try {
     const token = await getAccessToken()
     await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`,
+      `https://www.googleapis.com/drive/v3/files/${fileId}`,
       { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
     )
   } catch { /* ignore */ }
