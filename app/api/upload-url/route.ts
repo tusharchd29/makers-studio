@@ -1,5 +1,6 @@
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 120
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
