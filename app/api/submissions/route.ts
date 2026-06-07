@@ -8,8 +8,17 @@ import {
   appendRevision, updateRevision, getRevisionsByTaskId,
   getTasks, saveApprovedFile,
 } from '@/lib/store'
-import { deleteFile } from '@/lib/drive'
+import { deleteAllDraftsExcept } from '@/lib/drive'
+import { logActivity, incrementSOWApprovedCount } from '@/lib/sheets'
+import { notifyPMNewSubmission, notifyDesignerReviewed } from '@/lib/notify'
 import { randomUUID } from 'crypto'
+
+// Designer email map — add emails here when available
+const DESIGNER_EMAILS: Record<string, string> = {
+  Anshu:   process.env.EMAIL_ANSHU   || '',
+  Amit:    process.env.EMAIL_AMIT    || '',
+  Ranjeet: process.env.EMAIL_RANJEET || '',
+}
 
 async function getUser(req: NextRequest) {
   const token = req.cookies.get('ms_session')?.value
@@ -25,8 +34,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(subs)
 }
 
-// POST — called after browser finishes uploading to Drive directly
-// Body: { taskId, taskName, clientName, deliverableType, designerNote, fileId, draftName, draftNumber }
+// POST — called after upload to Drive completes
 export async function POST(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'designer') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -35,11 +43,9 @@ export async function POST(req: NextRequest) {
   const { taskId, taskName, clientName, deliverableType, designerNote, fileId, draftName, draftNumber } = body
   if (!taskId || !fileId) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
-  // viewUrl already set during upload — use it directly, or derive from fileId
-  const viewUrl = (body.viewUrl as string) || `https://drive.google.com/file/d/${fileId}/view`
-
-  const now          = new Date().toISOString()
-  const existing     = await getSubmissionByTaskId(taskId)
+  const viewUrl  = (body.viewUrl as string) || `https://drive.google.com/file/d/${fileId}/view`
+  const now      = new Date().toISOString()
+  const existing = await getSubmissionByTaskId(taskId)
   const submissionId = existing?.id || randomUUID()
 
   const submission = {
@@ -61,6 +67,22 @@ export async function POST(req: NextRequest) {
     status: 'pending', submittedAt: now,
   })
 
+  // Log to Activity Log
+  await logActivity(
+    user.name, 'Draft Submitted', taskName,
+    `client: ${clientName}, draft #${draftNumber}, file: ${draftName}`,
+    '', designerNote || ''
+  )
+
+  // Notify PM
+  await notifyPMNewSubmission({
+    designerName: user.name,
+    taskName, clientName,
+    draftNumber,
+    designerNote: designerNote || '',
+    viewUrl,
+  })
+
   return NextResponse.json({ id: submissionId, viewUrl, draftNumber, fileName: draftName })
 }
 
@@ -78,9 +100,23 @@ export async function PUT(req: NextRequest) {
   await updateSubmission(sub.taskId, { status, pmComment: pmComment || '', reviewedAt: now, reviewedBy: user.name })
   await updateRevision(sub.taskId, sub.draftNumber, { pmComment: pmComment || '', status, reviewedAt: now, reviewedBy: user.name })
 
+  // Log action with full detail
+  const actionLabel =
+    status === 'approved' ? 'Draft Approved' :
+    status === 'rejected' ? 'Draft Rejected' :
+    status === 'revision' ? 'Revision Requested' : `Status: ${status}`
+
+  await logActivity(
+    user.name, actionLabel, sub.taskName,
+    `client: ${sub.clientName}, designer: ${sub.designerName}, draft #${sub.draftNumber}`,
+    pmComment || '',
+    sub.designerNote || ''
+  )
+
   if (status === 'approved') {
     const tasks = await getTasks()
     const task  = tasks.find(t => t.id === sub.taskId)
+
     await saveApprovedFile({
       id: randomUUID(), taskId: sub.taskId,
       taskName: sub.taskName, clientName: sub.clientName,
@@ -91,17 +127,41 @@ export async function PUT(req: NextRequest) {
       totalDrafts: sub.draftNumber,
       approvedAt: now, approvedBy: user.name,
     })
-    // Delete previous draft files from Drive
-    const allRevisions    = await getRevisionsByTaskId(sub.taskId)
-    const previousFileIds = allRevisions
-      .filter(r => r.storagePath && r.storagePath !== sub.storagePath)
-      .map(r => r.storagePath)
-    for (const fid of previousFileIds) await deleteFile(fid)
+
+    // Auto-increment SOW approved count
+    const taskData = tasks.find(t => t.id === sub.taskId)
+    if (taskData?.clientId) await incrementSOWApprovedCount(taskData.clientId)
+
+    // Delete all draft files — keep only approved
+    const allRevisions = await getRevisionsByTaskId(sub.taskId)
+    const allFileIds = allRevisions.map(r => r.storagePath).filter(Boolean)
+    await deleteAllDraftsExcept(allFileIds, sub.storagePath)
   }
 
   if (status === 'rejected') {
+    // Delete all draft files on rejection
     const allRevisions = await getRevisionsByTaskId(sub.taskId)
-    for (const r of allRevisions) if (r.storagePath) await deleteFile(r.storagePath)
+    const allFileIds = allRevisions.map(r => r.storagePath).filter(Boolean)
+    for (const fid of allFileIds) {
+      const { deleteFile } = await import('@/lib/drive')
+      await deleteFile(fid)
+    }
+  }
+
+  // Notify designer
+  const designerEmail = DESIGNER_EMAILS[sub.designerName]
+  if (designerEmail) {
+    await notifyDesignerReviewed({
+      designerEmail,
+      designerName: sub.designerName,
+      taskName: sub.taskName,
+      clientName: sub.clientName,
+      draftNumber: sub.draftNumber,
+      status: status as 'approved' | 'rejected' | 'revision',
+      pmComment: pmComment || '',
+      reviewedBy: user.name,
+      viewUrl: sub.viewUrl,
+    })
   }
 
   return NextResponse.json({ ok: true })

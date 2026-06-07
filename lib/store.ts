@@ -1,10 +1,7 @@
-// Thin wrappers around sheets.ts — same API as before but persistent via Google Sheets
-
 import { readAll, appendRow, upsertRow, deleteRow, updateRow, ensureAllTabs, logActivity } from './sheets'
 import { Task, SOWEntry, Client, Submission, RevisionEntry, ApprovedFile, CLIENTS } from './types'
 import { SEEDED_SOW } from './seedSOW'
 
-// Auto-init tabs on first use
 let initialized = false
 async function init() {
   if (initialized) return
@@ -23,9 +20,7 @@ export async function getClients(): Promise<Client[]> {
   const nameById = Object.fromEntries(CLIENTS.map(c => [c.id, c.name]))
   const existingIds = new Set(rows.map(r => r.id))
   for (const c of CLIENTS) {
-    if (!existingIds.has(c.id)) {
-      await appendRow('clients', { id: c.id, name: c.name, drive_folder_id: '' })
-    }
+    if (!existingIds.has(c.id)) await appendRow('clients', { id: c.id, name: c.name, drive_folder_id: '' })
   }
   const nameUpdates: Promise<boolean>[] = []
   for (const row of rows) {
@@ -69,7 +64,10 @@ export async function saveTask(task: Task) {
     brief: task.brief || '', created_at: task.createdAt,
     created_by: task.createdBy, sow_month: task.sowMonth || '',
   })
-  await logActivity(task.createdBy || 'PM', 'Task Created', task.name, `client: ${task.clientName}, assigned: ${task.assignedTo}, deadline: ${task.deadline}`)
+  await logActivity(
+    task.createdBy || 'PM', 'Task Created', task.name,
+    `client: ${task.clientName}, assigned: ${task.assignedTo}, deadline: ${task.deadline}`
+  )
 }
 export async function deleteTask(id: string, by = 'PM') {
   await init()
@@ -88,6 +86,7 @@ export async function getSOW(): Promise<SOWEntry[]> {
       status: e.status, reels: e.reels, stories: e.stories,
       statics: e.statics, videos: e.videos, photos: e.photos,
       carousels: e.carousels, youtube_shorts: e.youtubeShorts,
+      approved_count: 0,
     })
     return SEEDED_SOW
   }
@@ -100,6 +99,7 @@ export async function getSOW(): Promise<SOWEntry[]> {
         status: e.status, reels: e.reels, stories: e.stories,
         statics: e.statics, videos: e.videos, photos: e.photos,
         carousels: e.carousels, youtube_shorts: e.youtubeShorts,
+        approved_count: 0,
       })
     }
   }
@@ -110,6 +110,7 @@ export async function getSOW(): Promise<SOWEntry[]> {
     statics: Number(r.statics), videos: Number(r.videos),
     photos: Number(r.photos), carousels: Number(r.carousels),
     youtubeShorts: Number(r.youtube_shorts),
+    approvedCount: Number(r.approved_count || 0),
   }))
 }
 export async function saveSOWEntry(entry: SOWEntry, by = 'PM') {
@@ -155,13 +156,12 @@ export async function saveSubmission(sub: Submission) {
     reviewed_at: sub.reviewedAt || '',
     reviewed_by: sub.reviewedBy || '',
   })
-  await logActivity(sub.designerName, 'Draft Submitted', sub.taskName, `client: ${sub.clientName}, draft #${sub.draftNumber}, file: ${sub.fileName}`)
 }
 export async function getSubmissionByTaskId(taskId: string): Promise<Submission | undefined> {
   const subs = await getSubmissions()
   return subs.find(s => s.taskId === taskId)
 }
-export async function updateSubmission(taskId: string, patch: Partial<Submission>, by = 'PM') {
+export async function updateSubmission(taskId: string, patch: Partial<Submission>) {
   await init()
   const mapped: Record<string, unknown> = {}
   if (patch.status       !== undefined) mapped.status        = patch.status
@@ -175,9 +175,6 @@ export async function updateSubmission(taskId: string, patch: Partial<Submission
   if (patch.designerNote !== undefined) mapped.designer_note = patch.designerNote
   if (patch.submittedAt  !== undefined) mapped.submitted_at  = patch.submittedAt
   await updateRow('submissions', 'task_id', taskId, mapped)
-  if (patch.status) {
-    await logActivity(by, `Submission ${patch.status}`, taskId, `status → ${patch.status}${patch.pmComment ? ', comment: '+patch.pmComment : ''}`)
-  }
 }
 
 // ── Revisions ─────────────────────────────────────────────────────────────
@@ -248,5 +245,8 @@ export async function saveApprovedFile(file: ApprovedFile, by = 'PM') {
     total_drafts: file.totalDrafts,
     approved_at: file.approvedAt, approved_by: file.approvedBy,
   })
-  await logActivity(by, 'Creative Approved', file.taskName, `client: ${file.clientName}, designer: ${file.designerName}, drafts: ${file.totalDrafts}, month: ${file.sowMonth}`)
+  await logActivity(
+    by, 'Creative Approved', file.taskName,
+    `client: ${file.clientName}, designer: ${file.designerName}, drafts: ${file.totalDrafts}, month: ${file.sowMonth}`
+  )
 }
