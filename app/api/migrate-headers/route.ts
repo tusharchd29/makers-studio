@@ -50,19 +50,21 @@ export async function GET(req: NextRequest) {
       return true
     })
 
-    const requests: any[] = []
-    const existingNames = existingTabs.map(t => t.title)
+    const existingNames = existingTabs.map(t => t.title?.toLowerCase())
 
-    // Add missing tabs
+    // Add missing tabs one by one to avoid batch conflict errors
     for (const tab of uniqueTabs) {
-      if (!existingNames.includes(tab.name)) {
-        requests.push({ addSheet: { properties: { title: tab.name } } })
-        log.push(`Will create tab: ${tab.name}`)
+      if (!existingNames.includes(tab.name.toLowerCase())) {
+        try {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            requestBody: { requests: [{ addSheet: { properties: { title: tab.name } } }] }
+          })
+          log.push(`Created tab: ${tab.name}`)
+        } catch {
+          log.push(`Tab already exists (skipped): ${tab.name}`)
+        }
       }
-    }
-
-    if (requests.length > 0) {
-      await sheets.spreadsheets.batchUpdate({ spreadsheetId: SPREADSHEET_ID, requestBody: { requests } })
     }
 
     // Now overwrite row 1 (headers) for every tab — force correct schema
