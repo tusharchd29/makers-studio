@@ -1,17 +1,48 @@
-// ── Storage Stub ──────────────────────────────────────────────────────────
-// File storage solution to be decided in meeting.
-// Replace this file with the chosen provider implementation.
-// All function signatures are fixed — do not change them.
+// ── Digital Ocean Spaces — File Storage ───────────────────────────────────
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
 const MAX_FILE_SIZE_BYTES = 150 * 1024 * 1024 // 150MB
-const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.avi', '.webm', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf']
-const ALLOWED_MIME_TYPES = [
+const ALLOWED_EXTENSIONS  = ['.mp4', '.mov', '.avi', '.webm', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf']
+const ALLOWED_MIME_TYPES  = [
   'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm',
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-  'application/pdf',
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
 ]
+const MAX_DRAFTS = 2
 
-// ── File Validation (provider-agnostic) ───────────────────────────────────
+function getS3Client(): S3Client {
+  const endpoint = process.env.DO_SPACES_ENDPOINT
+  const region   = process.env.DO_SPACES_REGION
+  const key      = process.env.DO_SPACES_KEY
+  const secret   = process.env.DO_SPACES_SECRET
+  if (!endpoint || !region || !key || !secret) {
+    throw new Error('Digital Ocean Spaces env vars not configured (DO_SPACES_ENDPOINT, DO_SPACES_REGION, DO_SPACES_KEY, DO_SPACES_SECRET)')
+  }
+  return new S3Client({
+    endpoint,
+    region,
+    credentials: { accessKeyId: key, secretAccessKey: secret },
+    forcePathStyle: false,
+  })
+}
+
+function getBucket(): string {
+  const bucket = process.env.DO_SPACES_BUCKET
+  if (!bucket) throw new Error('DO_SPACES_BUCKET env var not set')
+  return bucket
+}
+
+// ── Retry wrapper ─────────────────────────────────────────────────────────
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 800): Promise<T> {
+  for (let i = 0; i < retries; i++) {
+    try { return await fn() } catch (e) {
+      if (i === retries - 1) throw e
+      await new Promise(r => setTimeout(r, delayMs * (i + 1)))
+    }
+  }
+  throw new Error('Retry exhausted')
+}
+
+// ── File Validation ───────────────────────────────────────────────────────
 export function validateFile(fileName: string, mimeType: string, sizeBytes: number): { valid: boolean; error?: string } {
   const ext = '.' + fileName.split('.').pop()?.toLowerCase()
   if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_MIME_TYPES.includes(mimeType)) {
@@ -23,33 +54,55 @@ export function validateFile(fileName: string, mimeType: string, sizeBytes: numb
   return { valid: true }
 }
 
-// ── Upload file — STUB ─────────────────────────────────────────────────────
-// Returns: { fileId, viewUrl }
+// ── Upload file to DO Spaces ──────────────────────────────────────────────
+// folderPath: e.g. "Honda/Reel Task" → stored as Honda/Reel Task/filename
 export async function uploadFile(
   fileName: string,
   mimeType: string,
   buffer: Buffer,
-  folderPath: string  // e.g. "ClientName/TaskName"
+  folderPath: string
 ): Promise<{ fileId: string; viewUrl: string }> {
-  throw new Error('Storage provider not configured. Decide in meeting and implement.')
+  return withRetry(async () => {
+    const s3     = getS3Client()
+    const bucket = getBucket()
+    const key    = `${folderPath}/${fileName}`
+    const endpoint = process.env.DO_SPACES_ENDPOINT!
+
+    await s3.send(new PutObjectCommand({
+      Bucket:      bucket,
+      Key:         key,
+      Body:        buffer,
+      ContentType: mimeType,
+      ACL:         'public-read',
+    }))
+
+    const viewUrl = `${endpoint}/${bucket}/${key}`
+    return { fileId: key, viewUrl }
+  })
 }
 
-// ── Delete a file by ID — STUB ─────────────────────────────────────────────
+// ── Delete a file ─────────────────────────────────────────────────────────
 export async function deleteFile(fileId: string): Promise<void> {
-  // TODO: implement with chosen provider
+  try {
+    await withRetry(async () => {
+      const s3 = getS3Client()
+      await s3.send(new DeleteObjectCommand({
+        Bucket: getBucket(),
+        Key:    fileId,
+      }))
+    })
+  } catch { /* ignore — file may already be gone */ }
 }
 
-// ── Prune old drafts — keep last 2 per task ───────────────────────────────
-// fileIds: all known draft fileIds ordered oldest→newest
+// ── Keep only last MAX_DRAFTS per task ────────────────────────────────────
 export async function pruneOldDrafts(allFileIds: string[], keepFileId: string): Promise<void> {
-  const MAX_DRAFTS = 2
   const others = allFileIds.filter(id => id && id !== keepFileId)
   if (others.length <= MAX_DRAFTS) return
   const toDelete = others.slice(0, others.length - MAX_DRAFTS)
   for (const fid of toDelete) await deleteFile(fid)
 }
 
-// ── Delete all drafts except approved file ────────────────────────────────
+// ── On approval: delete all drafts, keep only approved file ──────────────
 export async function deleteAllDraftsExcept(allFileIds: string[], keepFileId: string): Promise<void> {
   for (const fid of allFileIds) {
     if (fid && fid !== keepFileId) await deleteFile(fid)
