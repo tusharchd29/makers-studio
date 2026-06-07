@@ -5,7 +5,7 @@ export const maxDuration = 120
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
 import { getSubmissionByTaskId, getRevisionsByTaskId } from '@/lib/store'
-import { getOrCreateTaskFolder, uploadFileToDrive, makePublic, validateFile, pruneOldDrafts } from '@/lib/drive'
+import { uploadFile, validateFile, pruneOldDrafts } from '@/lib/drive'
 import { acquireLock, releaseLock } from '@/lib/sheets'
 
 export async function POST(req: NextRequest) {
@@ -35,27 +35,20 @@ export async function POST(req: NextRequest) {
     if (!locked) return NextResponse.json({ error: 'Upload already in progress for this task. Please wait.' }, { status: 409 })
 
     try {
-      // Draft number
       const existing    = await getSubmissionByTaskId(taskId)
       const draftNumber = existing ? existing.draftNumber + 1 : 1
       const ext         = file.name.split('.').pop() || 'bin'
       const draftName   = `${taskName} - draft${draftNumber}.${ext}`
+      const folderPath  = `${clientName}/${taskName}`
 
-      // Get/create folder structure
-      const folderId = await getOrCreateTaskFolder(clientName, taskName)
-
-      // Upload file
       const arrayBuf = await file.arrayBuffer()
       const buffer   = Buffer.from(arrayBuf)
-      const fileId   = await uploadFileToDrive(draftName, file.type || 'application/octet-stream', buffer, folderId)
-
-      // Make publicly viewable
-      const viewUrl = await makePublic(fileId)
+      const { fileId, viewUrl } = await uploadFile(draftName, file.type || 'application/octet-stream', buffer, folderPath)
 
       // Prune old drafts — keep only last 2 per task
-      const revisions = await getRevisionsByTaskId(taskId)
+      const revisions  = await getRevisionsByTaskId(taskId)
       const allFileIds = revisions.map(r => r.storagePath).filter(Boolean)
-      allFileIds.push(fileId) // include the new one
+      allFileIds.push(fileId)
       await pruneOldDrafts(allFileIds, fileId)
 
       return NextResponse.json({ fileId, draftName, draftNumber, viewUrl })

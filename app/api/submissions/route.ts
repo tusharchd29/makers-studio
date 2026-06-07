@@ -8,7 +8,7 @@ import {
   appendRevision, updateRevision, getRevisionsByTaskId,
   getTasks, saveApprovedFile,
 } from '@/lib/store'
-import { deleteAllDraftsExcept } from '@/lib/drive'
+import { deleteAllDraftsExcept, deleteFile } from '@/lib/drive'
 import { logActivity, incrementSOWApprovedCount } from '@/lib/sheets'
 import { notifyPMNewSubmission, notifyDesignerReviewed } from '@/lib/notify'
 import { randomUUID } from 'crypto'
