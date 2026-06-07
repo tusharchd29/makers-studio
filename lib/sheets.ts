@@ -6,8 +6,8 @@
 
 import { google, sheets_v4 } from 'googleapis'
 
-// Sheet created in tusharchd29@gmail.com Drive → Makers Studio folder
-const SPREADSHEET_ID = process.env.SHEETS_SPREADSHEET_ID || '1Sfw4I50nG7PleJhJDAEj-dEkPx6y1asvz1QRyiTUuro'
+// Existing Makers Studio sheet in tusharchd29@gmail.com Drive
+const SPREADSHEET_ID = process.env.SHEETS_SPREADSHEET_ID || '1ZruIEkU6r7WXV8QBVphEj35_xckHucatnbz-ijhqbYg'
 function getSheetsClient() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
   const auth = new google.auth.GoogleAuth({
