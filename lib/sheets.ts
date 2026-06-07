@@ -6,7 +6,8 @@
 
 import { google, sheets_v4 } from 'googleapis'
 
-const SPREADSHEET_ID = process.env.SHEETS_SPREADSHEET_ID!
+// Sheet created in tusharchd29@gmail.com Drive → Makers Studio folder
+const SPREADSHEET_ID = process.env.SHEETS_SPREADSHEET_ID || '1Sfw4I50nG7PleJhJDAEj-dEkPx6y1asvz1QRyiTUuro'
 const IMPERSONATE_USER = process.env.GOOGLE_IMPERSONATE_USER || ''
 
 function getSheetsClient() {
