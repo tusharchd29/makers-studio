@@ -10,7 +10,7 @@ const PM_TABS = [
   { label: 'SOW',          href: '/pm/sow',       icon: 'ti-file-description' },
 ]
 
-const SOW_PIN = '11111'
+// SOW_PIN verified server-side via /api/verify-pin
 
 interface Client { id: string; name: string }
 interface SOWEntry {
@@ -96,12 +96,22 @@ export default function PMSOWPage() {
   }, [router, load])
 
   // ── PIN ──────────────────────────────────────────────────────────────────
-  function tryUnlock() {
-    if (pinInput === SOW_PIN) {
-      setUnlocked(true); setPinError(''); setPinInput('')
-    } else {
-      setPinError('Incorrect PIN')
-      setTimeout(() => setPinError(''), 2000)
+  async function tryUnlock() {
+    try {
+      const res = await fetch('/api/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinInput }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setUnlocked(true); setPinError(''); setPinInput('')
+      } else {
+        setPinError('Incorrect PIN')
+        setTimeout(() => setPinError(''), 2000)
+      }
+    } catch {
+      setPinError('Error — try again')
     }
   }
   function lock() {
