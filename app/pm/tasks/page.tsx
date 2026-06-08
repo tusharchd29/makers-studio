@@ -59,11 +59,16 @@ export default function PMTasksPage() {
   const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<'studio' | 'asana'>('studio')
+  const [syncStatus, setSyncStatus] = useState<Record<string, 'syncing' | 'synced' | 'failed'>>({})
   const [asanaTasks, setAsanaTasks] = useState<AsanaTask[]>([])
   const [asanaLoading, setAsanaLoading] = useState(false)
   const [asanaError, setAsanaError] = useState('')
   const [importing, setImporting] = useState<string | null>(null) // gid being imported
   const [importForm, setImportForm] = useState<Record<string, { deliverableType: string; assignedTo: string; sowMonth: string; brief: string }>>({})
+  // Asana tab filters
+  const [asanaFilterClient, setAsanaFilterClient] = useState('')
+  const [asanaFilterDue, setAsanaFilterDue]       = useState<'all' | 'overdue' | 'this-week' | 'upcoming'>('all')
+  const [asanaSearch, setAsanaSearch]             = useState('')
   const [search, setSearch] = useState('')
   const [filterClient, setFilterClient] = useState('')
   const [filterDesigner, setFilterDesigner] = useState('')
@@ -120,7 +125,6 @@ export default function PMTasksPage() {
     const form = importForm[t.gid]
     if (!form || !form.deliverableType || !form.assignedTo) return
     setImporting(t.gid)
-    // Match client name from Asana project name to Makers Studio client list
     const client = clients.find(c =>
       c.name.toLowerCase().includes(t.projectName.toLowerCase()) ||
       t.projectName.toLowerCase().includes(c.name.toLowerCase())
@@ -142,6 +146,8 @@ export default function PMTasksPage() {
         }),
       })
       const saved = await res.json()
+      // Show sync status on the studio task card
+      setSyncStatus(s => ({ ...s, [saved.id]: saved.asanaSynced ? 'synced' : 'failed' }))
       setTasks(prev => [saved, ...prev])
       setAsanaTasks(prev => prev.filter(a => a.gid !== t.gid))
     } finally {
@@ -167,12 +173,18 @@ export default function PMTasksPage() {
     const body = editTask
       ? { ...editTask, ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
       : { ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
+    // Mark syncing if this task has an asanaGid
+    if (body.asanaGid) setSyncStatus(s => ({ ...s, [body.id || '']: 'syncing' }))
     const res = await fetch('/api/tasks', {
       method: editTask ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
     const saved = await res.json()
+    // Update sync status based on response
+    if (saved.asanaGid) {
+      setSyncStatus(s => ({ ...s, [saved.id]: saved.asanaSynced ? 'synced' : 'failed' }))
+    }
     setTasks(prev => editTask ? prev.map(t => t.id === saved.id ? saved : t) : [saved, ...prev])
     setShowForm(false); setSaving(false)
   }
@@ -400,6 +412,15 @@ export default function PMTasksPage() {
                           <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: sm.bg, color: sm.color, fontWeight: 700, whiteSpace: 'nowrap' }}>
                             {sm.label}
                           </span>
+                          {/* Asana sync status badge */}
+                          {t.asanaGid && (() => {
+                            const st = syncStatus[t.id]
+                            if (st === 'syncing') return <span style={{ fontSize: 10, color: '#888', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#FAC775', display: 'inline-block' }} />Syncing…</span>
+                            if (st === 'failed')  return <span title="Asana sync failed — edit and save to retry" style={{ fontSize: 10, color: '#ff5f5f', display: 'flex', alignItems: 'center', gap: 3, cursor: 'help' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff5f5f', display: 'inline-block' }} />Sync failed</span>
+                            if (st === 'synced')  return <span style={{ fontSize: 10, color: '#4ede8c', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ede8c', display: 'inline-block' }} />Synced</span>
+                            // Has asanaGid but no status yet = was synced on import, show linked
+                            return <span title={`Linked to Asana task ${t.asanaGid}`} style={{ fontSize: 10, color: '#29ABE2', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#29ABE2', display: 'inline-block' }} />Asana linked</span>
+                          })()}
                           <button className="btn btn-sm" onClick={() => openEdit(t)}>Edit</button>
                           <button className="btn btn-sm btn-danger" onClick={() => deleteTask(t.id)}>Delete</button>
                         </div>
@@ -429,8 +450,61 @@ export default function PMTasksPage() {
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>All tasks are already in Makers Studio, or Asana has no incomplete tasks.</div>
               </div>
             ) : (
+              <>
+              {/* Asana filter bar */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: 160 }}>
+                  <i className="ti ti-search" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: 13 }} />
+                  <input className="field-input" placeholder="Search tasks…" value={asanaSearch}
+                    onChange={e => setAsanaSearch(e.target.value)}
+                    style={{ paddingLeft: 30, width: '100%' }} />
+                </div>
+                <select className="field-select" value={asanaFilterClient} onChange={e => setAsanaFilterClient(e.target.value)} style={{ minWidth: 140 }}>
+                  <option value="">All clients</option>
+                  {[...new Set(asanaTasks.map(t => t.projectName))].sort().map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+                <select className="field-select" value={asanaFilterDue} onChange={e => setAsanaFilterDue(e.target.value as 'all'|'overdue'|'this-week'|'upcoming')} style={{ minWidth: 130 }}>
+                  <option value="all">All dates</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="this-week">This week</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="no-date">No due date</option>
+                </select>
+                {(asanaFilterClient || asanaFilterDue !== 'all' || asanaSearch) && (
+                  <button className="btn btn-sm" onClick={() => { setAsanaFilterClient(''); setAsanaFilterDue('all'); setAsanaSearch('') }}>Clear ✕</button>
+                )}
+                <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 'auto' }}>
+                  {(() => {
+                    const today = new Date().toISOString().split('T')[0]
+                    const weekEnd = new Date(Date.now() + 7*86400000).toISOString().split('T')[0]
+                    return asanaTasks.filter(t => {
+                      if (asanaFilterClient && t.projectName !== asanaFilterClient) return false
+                      if (asanaSearch && !t.name.toLowerCase().includes(asanaSearch.toLowerCase())) return false
+                      if (asanaFilterDue === 'overdue')   return t.due_on && t.due_on < today
+                      if (asanaFilterDue === 'this-week') return t.due_on && t.due_on >= today && t.due_on <= weekEnd
+                      if (asanaFilterDue === 'upcoming')  return t.due_on && t.due_on > weekEnd
+                      if (asanaFilterDue === 'no-date')   return !t.due_on
+                      return true
+                    }).length
+                  })()} tasks
+                </span>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {asanaTasks.map(t => {
+                {(() => {
+                  const today = new Date().toISOString().split('T')[0]
+                  const weekEnd = new Date(Date.now() + 7*86400000).toISOString().split('T')[0]
+                  return asanaTasks.filter(t => {
+                    if (asanaFilterClient && t.projectName !== asanaFilterClient) return false
+                    if (asanaSearch && !t.name.toLowerCase().includes(asanaSearch.toLowerCase())) return false
+                    if (asanaFilterDue === 'overdue')   return t.due_on && t.due_on < today
+                    if (asanaFilterDue === 'this-week') return t.due_on && t.due_on >= today && t.due_on <= weekEnd
+                    if (asanaFilterDue === 'upcoming')  return t.due_on && t.due_on > weekEnd
+                    if (asanaFilterDue === 'no-date')   return !t.due_on
+                    return true
+                  })
+                })().map(t => {
                   const form = importForm[t.gid] || { deliverableType: 'Reel', assignedTo: 'Anshu', sowMonth: '', brief: '' }
                   const isImporting = importing === t.gid
                   return (
@@ -440,7 +514,14 @@ export default function PMTasksPage() {
                           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{t.name}</div>
                           <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <span style={{ background: '#E6F1FB', color: '#185FA5', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>{t.projectName}</span>
-                            {t.due_on && <span>Due {t.due_on}</span>}
+                            {t.due_on && (() => {
+                              const today = new Date().toISOString().split('T')[0]
+                              const diff = t.due_on ? Math.ceil((new Date(t.due_on).getTime() - Date.now()) / 86400000) : null
+                              if (t.due_on < today) return <span style={{ color: '#ff5f5f', fontWeight: 600 }}>⚠ Overdue ({Math.abs(diff!)}d)</span>
+                              if (diff !== null && diff === 0) return <span style={{ color: '#D97706', fontWeight: 600 }}>Due today</span>
+                              if (diff !== null && diff <= 3)  return <span style={{ color: '#D97706' }}>Due in {diff}d</span>
+                              return <span>Due {t.due_on}</span>
+                            })()}
                           </div>
                           {t.notes && t.notes.length > 0 && (
                             <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4, fontStyle: 'italic', maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -496,6 +577,7 @@ export default function PMTasksPage() {
                   )
                 })}
               </div>
+              </>
             )}
           </div>
         )}
