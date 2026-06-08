@@ -61,7 +61,7 @@ export async function getTasks(): Promise<Task[]> {
   }))
 }
 
-export async function saveTask(task: Task) {
+export async function saveTask(task: Task, isNew = false) {
   await init(true)
   await upsertRow('tasks', 'id', task.id, {
     id: task.id, client_id: task.clientId, client_name: task.clientName,
@@ -77,10 +77,12 @@ export async function saveTask(task: Task) {
     pm_status: task.pmStatus || '',
     posting_id: task.postingId || '',
   })
-  await logActivity(
-    task.createdBy || 'PM', 'Task Created', task.name,
-    `client: ${task.clientName}, assigned: ${task.assignedTo}, deadline: ${task.deadline}`
-  )
+  if (isNew) {
+    await logActivity(
+      task.createdBy || 'PM', 'Task Created', task.name,
+      `client: ${task.clientName}, assigned: ${task.assignedTo}, deadline: ${task.deadline}`
+    )
+  }
 }
 
 export async function deleteTask(id: string, by = 'PM') {
@@ -159,7 +161,7 @@ export async function saveSubmission(sub: Submission) {
     submitted_at: sub.submittedAt,
     reviewed_at: sub.reviewedAt || '',
     reviewed_by: sub.reviewedBy || '',
-    checklist_json: (sub as Submission & { checklistJson?: string }).checklistJson || '[]',
+    checklist_json: sub.checklistJson || '[]',
   })
 }
 

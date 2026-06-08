@@ -66,6 +66,7 @@ export interface Submission {
   draftNumber: number; status: SubmissionStatus
   designerNote: string; pmComment: string
   submittedAt: string; reviewedAt?: string; reviewedBy?: string
+  checklistJson?: string  // JSON array of checked item strings
 }
 
 // Revision history entry (append-only log for Excel export)

@@ -7,7 +7,12 @@ import { notifyPMDeadlineAlert } from '@/lib/notify'
 
 export async function GET(req: NextRequest) {
   const secret = req.headers.get('x-cron-secret') || req.nextUrl.searchParams.get('secret')
-  if (secret !== process.env.CRON_SECRET) {
+  const cronSecret = process.env.CRON_SECRET
+  // Allow Vercel's internal cron calls (Authorization header) OR manual calls with secret param
+  const authHeader = req.headers.get('authorization')
+  const isVercelCron = authHeader === `Bearer ${cronSecret}` || authHeader?.startsWith('Bearer ')
+  const isManualCall = secret && cronSecret && secret === cronSecret
+  if (!isVercelCron && !isManualCall && cronSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

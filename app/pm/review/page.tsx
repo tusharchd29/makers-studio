@@ -15,7 +15,7 @@ interface Submission {
   id: string; taskId: string; taskName: string; clientName: string; designerName: string
   deliverableType: string; fileType: string; fileName: string; version: string
   draftNumber: number; status: string; pmComment: string; designerNote: string
-  viewUrl: string; storagePath: string; checklist: string; notes: string; submittedAt: string
+  viewUrl: string; storagePath: string; checklistJson?: string; notes: string; submittedAt: string
 }
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -117,9 +117,18 @@ function SubmissionCard({ s, onReview, drafts }: { s: Submission; onReview: (id:
           💬 {s.notes}
         </div>
       )}
-      {s.checklist && (
-        <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text3)' }}>✓ {s.checklist}</div>
-      )}
+      {s.checklistJson && (() => {
+        try {
+          const items: string[] = JSON.parse(s.checklistJson)
+          if (!items.length) return null
+          return (
+            <div style={{ marginTop: '8px', padding: '6px 10px', background: '#7DC24210', borderRadius: '6px', fontSize: '11px' }}>
+              <span style={{ fontWeight: 700, color: '#3B6D11', marginRight: '6px' }}>✓ Checklist:</span>
+              <span style={{ color: 'var(--text2)' }}>{items.length} items checked — {items.slice(0, 3).join(', ')}{items.length > 3 ? ` +${items.length - 3} more` : ''}</span>
+            </div>
+          )
+        } catch { return null }
+      })()}
 
       {/* File preview */}
       <FilePreview s={s} />

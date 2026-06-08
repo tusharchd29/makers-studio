@@ -147,6 +147,40 @@ export async function notifyPMOnHold(opts: {
   } catch { /* never block main flow */ }
 }
 
+// ── Notify Designer: task reopened by PM ─────────────────────────────────
+export async function notifyDesignerReopened(opts: {
+  designerEmail: string
+  designerName: string
+  taskName: string
+  clientName: string
+  reassignedFrom?: string
+  pmName: string
+}) {
+  if (!opts.designerEmail || !process.env.NODEMAILER_EMAIL) return
+  const isReassigned = opts.reassignedFrom && opts.reassignedFrom !== opts.designerName
+  try {
+    const transporter = getTransporter()
+    const html = `<div style="${baseStyle()}">${card(`
+      <h2 style="margin:0 0 6px;font-size:16px;color:#ff9b4e;">↺ Task Reopened${isReassigned ? ' & Reassigned to You' : ''}</h2>
+      <p style="margin:0 0 16px;font-size:13px;color:#666;">${opts.pmName} has reopened a task${isReassigned ? ` and assigned it to you` : ''}. Please review and resubmit.</p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;">
+        <tr><td style="padding:6px 0;color:#888;width:120px;">Task</td><td style="font-weight:600;">${opts.taskName}</td></tr>
+        <tr><td style="padding:6px 0;color:#888;">Client</td><td>${opts.clientName}</td></tr>
+        <tr><td style="padding:6px 0;color:#888;">Assigned To</td><td style="font-weight:600;color:#7DC242;">${opts.designerName}</td></tr>
+        ${isReassigned ? `<tr><td style="padding:6px 0;color:#888;">Previously</td><td style="color:#aaa;">${opts.reassignedFrom}</td></tr>` : ''}
+        <tr><td style="padding:6px 0;color:#888;">Reopened By</td><td>${opts.pmName}</td></tr>
+      </table>
+      <p style="margin-top:16px;font-size:12px;color:#888;">Log in to Makers Studio to view the task and submit your work.</p>
+    `)}</div>`
+    await transporter.sendMail({
+      from: `"Makers Studio" <${process.env.NODEMAILER_EMAIL}>`,
+      to: opts.designerEmail,
+      subject: `[Makers Studio] ↺ Task Reopened — ${opts.taskName} (${opts.clientName})`,
+      html,
+    })
+  } catch { /* never block main flow */ }
+}
+
 // ── Notify PM: deadline alert (called from cron) ──────────────────────────
 export async function notifyPMDeadlineAlert(tasks: {
   taskName: string

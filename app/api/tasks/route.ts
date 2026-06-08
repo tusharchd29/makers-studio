@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 1. Save to Makers Studio Sheet first — always succeeds independently
-  await saveTask(task)
+  await saveTask(task, true)
 
   // 2. Await Asana sync (with timeout) — return asanaSynced flag so UI can show status
   let asanaSynced = false
@@ -166,7 +166,26 @@ export async function PATCH(req: NextRequest) {
           ? `Reassigned: ${task.assignedTo} → ${body.assignedTo}`
           : `Kept assigned to ${task.assignedTo}`,
       })
-      // Reset submission status to allow designer to resubmit
+      // Notify designer they have a reopened/reassigned task
+      const newAssignee = body.assignedTo || task.assignedTo
+      const DESIGNER_EMAILS: Record<string, string> = {
+        Anshu:    process.env.EMAIL_ANSHU    || 'tusharchd29@gmail.com',
+        Amit:     process.env.EMAIL_AMIT     || 'tusharchd29@gmail.com',
+        Ranjeet:  process.env.EMAIL_RANJEET  || 'tusharchd29@gmail.com',
+        Himanshu: process.env.EMAIL_HIMANSHU || 'tusharchd29@gmail.com',
+      }
+      const designerEmail = DESIGNER_EMAILS[newAssignee]
+      if (designerEmail) {
+        const { notifyDesignerReopened } = await import('@/lib/notify')
+        await notifyDesignerReopened({
+          designerEmail,
+          designerName: newAssignee,
+          taskName: task.name,
+          clientName: task.clientName,
+          reassignedFrom: task.assignedTo,
+          pmName: user.name,
+        })
+      }
       const { updateSubmission, getSubmissionByTaskId } = await import('@/lib/store')
       const existingSub = await getSubmissionByTaskId(task.id)
       if (existingSub) {
