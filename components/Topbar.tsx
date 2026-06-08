@@ -1,5 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
 interface TopbarProps {
   userName: string
@@ -11,11 +12,19 @@ interface TopbarProps {
 
 export default function Topbar({ userName, userRole, designerType, activeTab, tabs }: TopbarProps) {
   const router = useRouter()
+  const [refreshing, setRefreshing] = useState(false)
 
   async function logout() {
     await fetch('/api/auth', { method: 'DELETE' })
     localStorage.removeItem('ms_user')
     router.push('/')
+  }
+
+  async function refresh() {
+    setRefreshing(true)
+    router.refresh()
+    // Also force hard reload of current page data
+    window.location.reload()
   }
 
   // Avatar: use first 2 chars of name, but if name is "PM" just show one letter
@@ -55,6 +64,15 @@ export default function Topbar({ userName, userRole, designerType, activeTab, ta
             {designerType === 'graphic' && <span className="badge badge-graphic">Graphic</span>}
             <div className="avatar">{avatarText}</div>
             <span style={{ fontSize: '13px', fontWeight: 500 }}>{userName}</span>
+            <button
+              className="btn btn-sm"
+              onClick={refresh}
+              disabled={refreshing}
+              title="Refresh data"
+              style={{ padding: '5px 10px' }}
+            >
+              <i className={`ti ti-refresh${refreshing ? ' spinning' : ''}`} />
+            </button>
             <button className="btn btn-sm" onClick={logout}><i className="ti ti-logout" /> Sign out</button>
           </div>
         </div>
