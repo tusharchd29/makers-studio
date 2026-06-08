@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Topbar from '@/components/Topbar'
 import { Task, DELIVERABLE_TYPES, SOW_MONTHS } from '@/lib/types'
@@ -15,7 +15,25 @@ const PM_TABS = [
 interface Client { id: string; name: string }
 const DESIGNERS = ['Anshu', 'Amit', 'Ranjeet']
 
-function deadlineColor(d: string) {
+const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  'not-submitted': { label: 'Not Submitted', color: 'var(--text3)', bg: 'var(--surface2)' },
+  pending:         { label: 'In Review',     color: '#ff9b4e',      bg: '#ff9b4e18' },
+  approved:        { label: 'Approved',      color: '#4ede8c',      bg: '#4ede8c18' },
+  revision:        { label: 'Needs Revision',color: '#5b9cf6',      bg: '#5b9cf618' },
+  rejected:        { label: 'Rejected',      color: '#ff5f5f',      bg: '#ff5f5f18' },
+}
+
+function deadlineLabel(d: string, approved: boolean) {
+  if (approved) return '✓ Done'
+  const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)
+  if (diff < 0) return `${Math.abs(diff)}d overdue`
+  if (diff === 0) return 'Due today'
+  if (diff === 1) return 'Due tomorrow'
+  return `Due ${new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+}
+
+function deadlineColor(d: string, approved: boolean) {
+  if (approved) return '#4ede8c'
   const diff = (new Date(d).getTime() - Date.now()) / 86400000
   if (diff < 0) return 'var(--red)'
   if (diff <= 2) return 'var(--orange)'
@@ -26,8 +44,8 @@ export default function PMTasksPage() {
   const [user, setUser]       = useState<{ name: string; role: string } | null>(null)
   const [tasks, setTasks]     = useState<Task[]>([])
   const [clients, setClients] = useState<Client[]>([])
-  const [approvedTaskIds, setApprovedTaskIds] = useState<Set<string>>(new Set())
   const [subStatusMap, setSubStatusMap] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
@@ -35,15 +53,10 @@ export default function PMTasksPage() {
   const [search, setSearch] = useState('')
   const [filterClient, setFilterClient] = useState('')
   const [filterDesigner, setFilterDesigner] = useState('')
-  const [filterDeadline, setFilterDeadline] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
   const router = useRouter()
 
-  useEffect(() => {
-    const stored = localStorage.getItem('ms_user')
-    if (!stored) { router.push('/'); return }
-    const u = JSON.parse(stored)
-    if (u.role !== 'pm') { router.push('/designer/tasks'); return }
-    setUser(u)
+  const loadData = useCallback(() => {
     Promise.all([
       fetch('/api/tasks').then(r => r.json()),
       fetch('/api/clients').then(r => r.json()),
@@ -52,14 +65,22 @@ export default function PMTasksPage() {
       if (Array.isArray(t)) setTasks(t)
       if (Array.isArray(c)) setClients(c)
       if (Array.isArray(subs)) {
-        const ids = new Set<string>(subs.filter((s: {status: string; taskId: string}) => s.status === 'approved').map((s: {taskId: string}) => s.taskId))
-        setApprovedTaskIds(ids)
         const map: Record<string, string> = {}
-        subs.forEach((s: {taskId: string; status: string}) => { map[s.taskId] = s.status })
+        subs.forEach((s: { taskId: string; status: string }) => { map[s.taskId] = s.status })
         setSubStatusMap(map)
       }
+      setLoading(false)
     })
-  }, [router])
+  }, [])
+
+  useEffect(() => {
+    const stored = localStorage.getItem('ms_user')
+    if (!stored) { router.push('/'); return }
+    const u = JSON.parse(stored)
+    if (u.role !== 'pm') { router.push('/designer/tasks'); return }
+    setUser(u)
+    loadData()
+  }, [router, loadData])
 
   function openNew() {
     setEditTask(null)
@@ -77,8 +98,8 @@ export default function PMTasksPage() {
     setSaving(true)
     const client = clients.find(c => c.id === form.clientId)!
     const body = editTask
-      ? { ...editTask, ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'], sowMonth: form.sowMonth }
-      : { ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'], sowMonth: form.sowMonth }
+      ? { ...editTask, ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
+      : { ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
     const res = await fetch('/api/tasks', {
       method: editTask ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -95,22 +116,28 @@ export default function PMTasksPage() {
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 
+  // Stats
+  const stats = useMemo(() => {
+    const approved = tasks.filter(t => subStatusMap[t.id] === 'approved').length
+    const pending  = tasks.filter(t => subStatusMap[t.id] === 'pending').length
+    const revision = tasks.filter(t => subStatusMap[t.id] === 'revision').length
+    const notSub   = tasks.filter(t => !subStatusMap[t.id]).length
+    const overdue  = tasks.filter(t => new Date(t.deadline) < new Date() && subStatusMap[t.id] !== 'approved').length
+    return { total: tasks.length, approved, pending, revision, notSub, overdue }
+  }, [tasks, subStatusMap])
+
   const filtered = useMemo(() => tasks.filter(t => {
-    if (filterClient   && t.clientName   !== filterClient)   return false
-    if (filterDesigner && t.assignedTo   !== filterDesigner) return false
-    if (filterDeadline === 'overdue'  && (new Date(t.deadline) >= new Date() || approvedTaskIds.has(t.id))) return false
-    if (filterDeadline === 'thisWeek') {
-      const diff = (new Date(t.deadline).getTime() - Date.now()) / 86400000
-      if (diff < 0 || diff > 7) return false
-    }
+    const status = subStatusMap[t.id] || 'not-submitted'
+    if (filterClient   && t.clientName  !== filterClient)   return false
+    if (filterDesigner && t.assignedTo  !== filterDesigner) return false
+    if (filterStatus   && status        !== filterStatus)   return false
     if (search) {
       const q = search.toLowerCase()
-      if (!t.name.toLowerCase().includes(q) && !t.clientName.toLowerCase().includes(q)) return false
+      if (!t.name.toLowerCase().includes(q) && !t.clientName.toLowerCase().includes(q) && !t.assignedTo.toLowerCase().includes(q)) return false
     }
     return true
-  }), [tasks, filterClient, filterDesigner, filterDeadline, search])
+  }), [tasks, subStatusMap, filterClient, filterDesigner, filterStatus, search])
 
-  // Group by client
   const grouped = useMemo(() => {
     const map: Record<string, Task[]> = {}
     filtered.forEach(t => {
@@ -120,8 +147,6 @@ export default function PMTasksPage() {
     return map
   }, [filtered])
 
-  const overdueCount = tasks.filter(t => new Date(t.deadline) < new Date() && !approvedTaskIds.has(t.id)).length
-
   if (!user) return null
 
   return (
@@ -129,40 +154,61 @@ export default function PMTasksPage() {
       <Topbar userName={user.name} userRole="pm" activeTab="/pm/tasks" tabs={PM_TABS} />
       <div className="page">
 
-        {overdueCount > 0 && (
-          <div style={{ background: '#ff5f5f18', border: '1px solid #ff5f5f40', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <i className="ti ti-clock-exclamation" style={{ color: 'var(--red)', fontSize: '16px' }} />
-            <span style={{ fontSize: '13px', color: 'var(--red)', fontWeight: 600 }}>{overdueCount} overdue task{overdueCount > 1 ? 's' : ''}</span>
-            <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setFilterDeadline('overdue')}>View overdue</button>
+        {/* Stats row */}
+        {!loading && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px', marginBottom: '16px' }}>
+            {[
+              { label: 'Total',        val: stats.total,    color: 'var(--text)',  filter: '' },
+              { label: 'Not Submitted',val: stats.notSub,   color: 'var(--text2)', filter: 'not-submitted' },
+              { label: 'In Review',    val: stats.pending,  color: '#ff9b4e',      filter: 'pending' },
+              { label: 'Revision',     val: stats.revision, color: '#5b9cf6',      filter: 'revision' },
+              { label: 'Approved',     val: stats.approved, color: '#4ede8c',      filter: 'approved' },
+              { label: 'Overdue',      val: stats.overdue,  color: stats.overdue > 0 ? '#ff5f5f' : 'var(--text3)', filter: '' },
+            ].map(s => (
+              <div key={s.label} className="stat-card" style={{ cursor: s.filter ? 'pointer' : 'default', padding: '10px 8px' }}
+                onClick={() => s.filter && setFilterStatus(filterStatus === s.filter ? '' : s.filter)}>
+                <div className="stat-value" style={{ color: s.color, fontSize: '20px' }}>{s.val}</div>
+                <div className="stat-label" style={{ fontSize: '10px' }}>{s.label}</div>
+              </div>
+            ))}
           </div>
         )}
 
-        <div className="section-header">
-          <div className="section-title">Tasks <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: '13px' }}>({filtered.length} of {tasks.length})</span></div>
+        {/* Header + inline filters */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div className="section-title">
+            Tasks
+            <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: '12px', marginLeft: '6px' }}>
+              {filtered.length === tasks.length ? tasks.length : `${filtered.length} of ${tasks.length}`}
+            </span>
+          </div>
           <button className="btn btn-sm btn-primary" onClick={openNew}>+ New Task</button>
         </div>
 
-        {/* Filters */}
+        {/* Inline filters */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '160px' }}>
             <i className="ti ti-search" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: '13px' }} />
-            <input className="field-input" placeholder="Search tasks…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '30px', width: '100%' }} />
+            <input className="field-input" placeholder="Search tasks, client, designer…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '30px', width: '100%' }} />
           </div>
-          <select className="field-select" value={filterClient} onChange={e => setFilterClient(e.target.value)} style={{ minWidth: '150px' }}>
+          <select className="field-select" value={filterClient} onChange={e => setFilterClient(e.target.value)} style={{ minWidth: '140px' }}>
             <option value="">All clients</option>
             {clients.map(c => <option key={c.id}>{c.name}</option>)}
           </select>
-          <select className="field-select" value={filterDesigner} onChange={e => setFilterDesigner(e.target.value)} style={{ minWidth: '130px' }}>
+          <select className="field-select" value={filterDesigner} onChange={e => setFilterDesigner(e.target.value)} style={{ minWidth: '120px' }}>
             <option value="">All designers</option>
             {DESIGNERS.map(d => <option key={d}>{d}</option>)}
           </select>
-          <select className="field-select" value={filterDeadline} onChange={e => setFilterDeadline(e.target.value)} style={{ minWidth: '130px' }}>
-            <option value="">All deadlines</option>
-            <option value="thisWeek">Due this week</option>
-            <option value="overdue">Overdue</option>
+          <select className="field-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ minWidth: '130px' }}>
+            <option value="">All statuses</option>
+            <option value="not-submitted">Not Submitted</option>
+            <option value="pending">In Review</option>
+            <option value="revision">Revision</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
           </select>
-          {(search || filterClient || filterDesigner || filterDeadline) && (
-            <button className="btn btn-sm" onClick={() => { setSearch(''); setFilterClient(''); setFilterDesigner(''); setFilterDeadline('') }}>Clear ✕</button>
+          {(search || filterClient || filterDesigner || filterStatus) && (
+            <button className="btn btn-sm" onClick={() => { setSearch(''); setFilterClient(''); setFilterDesigner(''); setFilterStatus('') }}>Clear ✕</button>
           )}
         </div>
 
@@ -188,7 +234,7 @@ export default function PMTasksPage() {
               </div>
               <div className="field">
                 <label className="field-label">Task name *</label>
-                <input className="field-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Diwali Reel" />
+                <input className="field-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Honda June Reel" />
               </div>
               <div className="row">
                 <div className="col field">
@@ -203,7 +249,7 @@ export default function PMTasksPage() {
                 </div>
               </div>
               <div className="field">
-                <label className="field-label">SOW Month *</label>
+                <label className="field-label">SOW Month</label>
                 <select className="field-select" value={form.sowMonth} onChange={e => setForm(f => ({ ...f, sowMonth: e.target.value }))}>
                   <option value="">Select month…</option>
                   {SOW_MONTHS().map(m => <option key={m}>{m}</option>)}
@@ -211,7 +257,7 @@ export default function PMTasksPage() {
               </div>
               <div className="field">
                 <label className="field-label">Brief for designer</label>
-                <textarea className="field-textarea" value={form.brief} onChange={e => setForm(f => ({ ...f, brief: e.target.value }))} placeholder="Any specific instructions…" />
+                <textarea className="field-textarea" value={form.brief} onChange={e => setForm(f => ({ ...f, brief: e.target.value }))} placeholder="Specific instructions, references, tone…" />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                 <button className="btn" onClick={() => setShowForm(false)}>Cancel</button>
@@ -223,50 +269,66 @@ export default function PMTasksPage() {
           </div>
         )}
 
-        {filtered.length === 0 ? (
-          <div className="empty">No tasks match these filters.</div>
+        {loading ? (
+          <div className="empty">Loading tasks…</div>
+        ) : filtered.length === 0 ? (
+          <div className="empty">
+            {tasks.length === 0
+              ? <><div style={{ marginBottom: '12px' }}>No tasks yet.</div><button className="btn btn-primary btn-sm" onClick={openNew}>+ Create your first task</button></>
+              : 'No tasks match these filters.'}
+          </div>
         ) : (
-          Object.entries(grouped).map(([client, clientTasks]) => (
-            <div key={client} style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <div style={{ fontWeight: 700, fontSize: '13px' }}>{client}</div>
-                <div style={{ fontSize: '11px', color: 'var(--text3)', padding: '2px 8px', background: 'var(--surface2)', borderRadius: '20px' }}>
-                  {clientTasks.length} task{clientTasks.length > 1 ? 's' : ''}
-                  {clientTasks.filter(t => new Date(t.deadline) < new Date() && !approvedTaskIds.has(t.id)).length > 0 &&
-                    <span style={{ color: 'var(--red)', marginLeft: '6px' }}>· {clientTasks.filter(t => new Date(t.deadline) < new Date() && !approvedTaskIds.has(t.id)).length} overdue</span>}
-                    {clientTasks.filter(t => approvedTaskIds.has(t.id)).length > 0 && <span style={{ color: '#4ede8c', marginLeft: '6px' }}>· {clientTasks.filter(t => approvedTaskIds.has(t.id)).length} approved</span>}
-                </div>
-                <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
-              </div>
-              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                {clientTasks.map(t => (
-                  <div key={t.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, marginBottom: '2px' }}>{t.name}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <span>→ <strong>{t.assignedTo}</strong></span>
-                        <span className="tag">{t.deliverableType}</span>
-                        <span style={{ color: deadlineColor(t.deadline), fontWeight: 500 }}>
-                          {new Date(t.deadline) < new Date() && !approvedTaskIds.has(t.id) ? '⚠ ' : ''}
-                          Due {new Date(t.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{approvedTaskIds.has(t.id) ? ' ✅' : ''}
-                        </span>
-                      </div>
-                      {t.brief && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>{t.brief}</div>}
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
-                      {subStatusMap[t.id] === 'approved' && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#4ede8c20', color: '#4ede8c', fontWeight: 700 }}>✓ Approved</span>}
-                      {subStatusMap[t.id] === 'pending' && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#ff9b4e20', color: '#ff9b4e', fontWeight: 700 }}>⏳ In Review</span>}
-                      {subStatusMap[t.id] === 'revision' && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#5b9cf620', color: '#5b9cf6', fontWeight: 700 }}>↩ Revision</span>}
-                      {subStatusMap[t.id] === 'rejected' && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#ff5f5f20', color: '#ff5f5f', fontWeight: 700 }}>✕ Rejected</span>}
-                      {!subStatusMap[t.id] && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'var(--surface2)', color: 'var(--text3)', fontWeight: 600 }}>Not submitted</span>}
-                      <button className="btn btn-sm" onClick={() => openEdit(t)}>Edit</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => deleteTask(t.id)}>Delete</button>
-                    </div>
+          Object.entries(grouped).map(([client, clientTasks]) => {
+            const clientApproved = clientTasks.filter(t => subStatusMap[t.id] === 'approved').length
+            const clientPending  = clientTasks.filter(t => subStatusMap[t.id] === 'pending').length
+            const clientOverdue  = clientTasks.filter(t => new Date(t.deadline) < new Date() && subStatusMap[t.id] !== 'approved').length
+            return (
+              <div key={client} style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '13px' }}>{client}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text3)', display: 'flex', gap: '6px' }}>
+                    <span style={{ padding: '1px 7px', background: 'var(--surface2)', borderRadius: '20px' }}>{clientTasks.length} task{clientTasks.length > 1 ? 's' : ''}</span>
+                    {clientApproved > 0 && <span style={{ padding: '1px 7px', background: '#4ede8c18', color: '#4ede8c', borderRadius: '20px', fontWeight: 600 }}>✓ {clientApproved}</span>}
+                    {clientPending > 0  && <span style={{ padding: '1px 7px', background: '#ff9b4e18', color: '#ff9b4e', borderRadius: '20px', fontWeight: 600 }}>⏳ {clientPending}</span>}
+                    {clientOverdue > 0  && <span style={{ padding: '1px 7px', background: '#ff5f5f18', color: '#ff5f5f', borderRadius: '20px', fontWeight: 600 }}>⚠ {clientOverdue}</span>}
                   </div>
-                ))}
+                  <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
+                </div>
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                  {clientTasks.map(t => {
+                    const status = subStatusMap[t.id] || 'not-submitted'
+                    const isApproved = status === 'approved'
+                    const sm = STATUS_META[status] || STATUS_META['not-submitted']
+                    return (
+                      <div key={t.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${sm.color}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, marginBottom: '3px', fontSize: '14px' }}>{t.name}</div>
+                          <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span>→ <strong>{t.assignedTo}</strong></span>
+                            <span className="tag">{t.deliverableType}</span>
+                            {t.sowMonth && <span className="tag" style={{ background: '#EAF3DE', color: '#3B6D11', border: '0.5px solid #C0DD97' }}>{t.sowMonth}</span>}
+                            <span style={{ color: deadlineColor(t.deadline, isApproved), fontWeight: 500 }}>
+                              {deadlineLabel(t.deadline, isApproved)}
+                            </span>
+                          </div>
+                          {t.brief && t.brief.length < 120 && (
+                            <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '3px', fontStyle: 'italic' }}>{t.brief}</div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: sm.bg, color: sm.color, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {sm.label}
+                          </span>
+                          <button className="btn btn-sm" onClick={() => openEdit(t)}>Edit</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => deleteTask(t.id)}>Delete</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </>
