@@ -39,7 +39,9 @@ export default function PMDashboard() {
       fetch('/api/approved').then(r => r.json()),
     ]).then(([subs, sowData, clientsData, approvedData]) => {
       if (Array.isArray(subs)) setSubmissions(subs)
-      if (Array.isArray(sowData)) setSOW(sowData)
+      // /api/sow returns { sow, progress, month } object
+      if (sowData?.sow) setSOW(sowData.sow)
+      else if (Array.isArray(sowData)) setSOW(sowData)
       if (Array.isArray(clientsData)) setClients(clientsData)
       if (Array.isArray(approvedData)) setApprovedFiles(approvedData)
       setLoading(false)
@@ -60,9 +62,11 @@ export default function PMDashboard() {
     submissions.filter(s => new Date(s.submittedAt).toLocaleString('en-US', { month: 'long', year: 'numeric' }) === activeMonth),
     [submissions, activeMonth])
 
+  // Count unique approved tasks for current month (deduplicated by taskId)
+  const approvedThisMonth = approvedFiles.filter(f => f.sowMonth === activeMonth)
+  const approvedUniqueCount = new Set(approvedThisMonth.map(f => (f as {taskId?: string}).taskId || f.taskName)).size
   const pending  = monthSubs.filter(s => s.status === 'pending').length
-  const approvedFromFiles = approvedFiles.filter(f => f.sowMonth === activeMonth).length
-  const approved = approvedFromFiles > 0 ? approvedFromFiles : monthSubs.filter(s => s.status === 'approved').length
+  const approved = approvedUniqueCount > 0 ? approvedUniqueCount : monthSubs.filter(s => s.status === 'approved').length
   const rejected = monthSubs.filter(s => s.status === 'rejected').length
   const revision = monthSubs.filter(s => s.status === 'revision').length
 
@@ -128,7 +132,7 @@ export default function PMDashboard() {
         )}
 
         {/* Stats */}
-        <div className="stat-grid" style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
           <div className="stat-card"><div className="stat-label">Submitted</div><div className="stat-value">{monthSubs.length}</div></div>
           <div className="stat-card"><div className="stat-label">Pending</div><div className="stat-value" style={{ color: '#ff9b4e' }}>{pending}</div></div>
           <div className="stat-card"><div className="stat-label">Approved</div><div className="stat-value" style={{ color: '#4ede8c' }}>{approved}</div></div>
