@@ -6,17 +6,19 @@ const JWT_SECRET = new TextEncoder().encode(
 )
 
 const PINS: Record<string, { role: 'designer' | 'pm'; designerType?: 'video' | 'graphic' }> = {
-  Anshu: { role: 'designer', designerType: 'video' },
-  Amit: { role: 'designer', designerType: 'video' },
-  Ranjeet: { role: 'designer', designerType: 'graphic' },
-  PM: { role: 'pm' },
+  Anshu:    { role: 'designer', designerType: 'video' },
+  Amit:     { role: 'designer', designerType: 'video' },
+  Himanshu: { role: 'designer', designerType: 'video' },
+  Ranjeet:  { role: 'designer', designerType: 'graphic' },
+  PM:       { role: 'pm' },
 }
 
 const PIN_VALUES: Record<string, string> = {
-  Anshu: process.env.PIN_ANSHU || '2841',
-  Amit: process.env.PIN_AMIT || '5973',
-  Ranjeet: process.env.PIN_RANJEET || '6127',
-  PM: process.env.PIN_PM || '3456',
+  Anshu:    process.env.PIN_ANSHU    || '2841',
+  Amit:     process.env.PIN_AMIT     || '5973',
+  Himanshu: process.env.PIN_HIMANSHU || '7391',
+  Ranjeet:  process.env.PIN_RANJEET  || '6127',
+  PM:       process.env.PIN_PM       || '3456',
 }
 
 export function verifyPin(name: string, pin: string): User | null {
