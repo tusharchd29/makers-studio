@@ -232,7 +232,9 @@ export async function getApprovedFiles(): Promise<ApprovedFile[]> {
 
 export async function saveApprovedFile(file: ApprovedFile, by = 'PM') {
   await init(true)
-  await upsertRow('approved', 'task_id', file.taskId, {
+  // Use appendRow (not upsert) so every approval is logged for full audit trail
+  // The /api/approved route deduplicates on read for counting purposes
+  await appendRow('approved', {
     id: file.id, task_id: file.taskId, task_name: file.taskName,
     client_name: file.clientName, designer_name: file.designerName,
     sow_month: file.sowMonth, deliverable_type: file.deliverableType,
