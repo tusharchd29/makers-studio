@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Topbar from '@/components/Topbar'
@@ -174,7 +175,8 @@ export default function PMTasksPage() {
       ? { ...editTask, ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
       : { ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
     // Mark syncing if this task has an asanaGid
-    if (body.asanaGid) setSyncStatus(s => ({ ...s, [body.id || '']: 'syncing' }))
+    const bodyAsTask = body as Task
+    if (bodyAsTask.asanaGid) setSyncStatus(s => ({ ...s, [bodyAsTask.id || '']: 'syncing' }))
     const res = await fetch('/api/tasks', {
       method: editTask ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -514,7 +516,7 @@ export default function PMTasksPage() {
                           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{t.name}</div>
                           <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <span style={{ background: '#E6F1FB', color: '#185FA5', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>{t.projectName}</span>
-                            {t.due_on && ((): JSX.Element => {
+                            {t.due_on && ((): React.ReactNode => {
                               const today = new Date().toISOString().split('T')[0]
                               const diff = Math.ceil((new Date(t.due_on).getTime() - Date.now()) / 86400000)
                               if (t.due_on < today) return <span style={{ color: '#ff5f5f', fontWeight: 600 }}>⚠ Overdue ({Math.abs(diff)}d)</span>
