@@ -7,6 +7,7 @@ import { SOWEntry } from '@/lib/types'
 const PM_TABS = [
   { label: 'Dashboard',    href: '/pm/dashboard', icon: 'ti-layout-dashboard' },
   { label: 'Review Queue', href: '/pm/review',    icon: 'ti-eye-check' },
+  { label: 'Creatives',    href: '/pm/creatives', icon: 'ti-photo-check' },
   { label: 'Tasks',        href: '/pm/tasks',     icon: 'ti-checklist' },
   { label: 'SOW',          href: '/pm/sow',       icon: 'ti-file-description' },
 ]
