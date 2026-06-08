@@ -22,7 +22,8 @@ export default function PMDashboard() {
   const [sow, setSOW]                 = useState<SOWEntry[]>([])
   const [clients, setClients]         = useState<Client[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }))
-  const [approvedFiles, setApprovedFiles] = useState<{clientName: string; sowMonth: string; deliverableType: string}[]>([])
+  const [approvedFiles, setApprovedFiles] = useState<{clientName: string; sowMonth: string; deliverableType: string; taskName: string; viewUrl: string; designerName: string; approvedAt: string}[]>([])
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
@@ -35,11 +36,14 @@ export default function PMDashboard() {
       fetch('/api/submissions').then(r => r.json()),
       fetch('/api/sow').then(r => r.json()),
       fetch('/api/clients').then(r => r.json()),
-    ]).then(([subs, sowData, clientsData]) => {
+      fetch('/api/approved').then(r => r.json()),
+    ]).then(([subs, sowData, clientsData, approvedData]) => {
       if (Array.isArray(subs)) setSubmissions(subs)
       if (Array.isArray(sowData)) setSOW(sowData)
       if (Array.isArray(clientsData)) setClients(clientsData)
-    })
+      if (Array.isArray(approvedData)) setApprovedFiles(approvedData)
+      setLoading(false)
+    }).catch(() => setLoading(false))
   }, [router])
 
   const months = useMemo(() => {
@@ -51,13 +55,6 @@ export default function PMDashboard() {
 
   const currentMonth = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
   const activeMonth  = selectedMonth
-
-  useEffect(() => {
-    fetch('/api/approved')
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setApprovedFiles(d) })
-      .catch(() => {/* ignore */})
-  }, [])  // fetch once — approvedFiles contains all months
 
   const monthSubs = useMemo(() =>
     submissions.filter(s => new Date(s.submittedAt).toLocaleString('en-US', { month: 'long', year: 'numeric' }) === activeMonth),
@@ -81,6 +78,12 @@ export default function PMDashboard() {
   }
 
   if (!user) return null
+  if (loading) return (
+    <>
+      <Topbar userName={user.name} userRole="pm" activeTab="/pm/dashboard" tabs={PM_TABS} />
+      <div className="page"><div className="empty" style={{ paddingTop: '60px' }}>Loading dashboard…</div></div>
+    </>
+  )
 
   const PRIORITY_ORDER = ['A', 'B', 'C', 'D']
   const sowWithProgress = sow
@@ -138,6 +141,35 @@ export default function PMDashboard() {
           <div className="section-title">SOW Progress — {activeMonth}</div>
           <a href="/pm/sow" className="btn btn-sm">Manage SOW</a>
         </div>
+
+        {/* Recent approvals for current month */}
+        {approvedFiles.filter(f => f.sowMonth === activeMonth).length > 0 && (
+          <>
+            <div className="section-header" style={{ marginBottom: '10px', marginTop: '8px' }}>
+              <div className="section-title">Approved This Month <span style={{ fontWeight: 400, fontSize: '12px', color: 'var(--text3)' }}>({approvedFiles.filter(f => f.sowMonth === activeMonth).length})</span></div>
+            </div>
+            <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '20px' }}>
+              {approvedFiles.filter(f => f.sowMonth === activeMonth).slice().reverse().map((f, i) => (
+                <div key={i} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '2px' }}>{f.taskName || '—'}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 500 }}>{f.clientName}</span>
+                      {f.designerName && <span style={{ color: 'var(--text3)' }}>by {f.designerName}</span>}
+                      {f.deliverableType && <span className="tag">{f.deliverableType}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#4ede8c20', color: '#4ede8c', fontWeight: 700 }}>✓ Approved</span>
+                    {f.viewUrl && f.viewUrl !== '#' && (
+                      <a href={f.viewUrl} target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: 'var(--accent)', textDecoration: 'none' }}>View ↗</a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         {sowWithProgress.length === 0 ? (
           <div className="empty">No SOW data. <a href="/pm/sow" style={{ color: 'var(--accent)' }}>Set up SOW →</a></div>
