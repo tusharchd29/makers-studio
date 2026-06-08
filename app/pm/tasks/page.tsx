@@ -57,7 +57,7 @@ export default function PMTasksPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
-  const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
+  const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: false, pmNotes: '' })
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<'studio' | 'asana'>('studio')
   const [syncStatus, setSyncStatus] = useState<Record<string, 'syncing' | 'synced' | 'failed'>>({})
@@ -158,12 +158,12 @@ export default function PMTasksPage() {
 
   function openNew() {
     setEditTask(null)
-    setForm({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
+    setForm({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: false, pmNotes: '' })
     setShowForm(true)
   }
   function openEdit(t: Task) {
     setEditTask(t)
-    setForm({ clientId: t.clientId, name: t.name, deliverableType: t.deliverableType, assignedTo: t.assignedTo, deadline: t.deadline.split('T')[0], brief: t.brief || '', sowMonth: t.sowMonth || '' })
+    setForm({ clientId: t.clientId, name: t.name, deliverableType: t.deliverableType, assignedTo: t.assignedTo, deadline: t.deadline.split('T')[0], brief: t.brief || '', sowMonth: t.sowMonth || '', taskStatus: t.taskStatus || 'not-started', holdReason: t.holdReason || '', priority: t.priority || false, pmNotes: t.pmNotes || '' })
     setShowForm(true)
   }
 
@@ -354,6 +354,33 @@ export default function PMTasksPage() {
                 <label className="field-label">Brief for designer</label>
                 <textarea className="field-textarea" value={form.brief} onChange={e => setForm(f => ({ ...f, brief: e.target.value }))} placeholder="Specific instructions, references, tone…" />
               </div>
+              <div className="row">
+                <div className="col field">
+                  <label className="field-label">Task Status</label>
+                  <select className="field-select" value={form.taskStatus} onChange={e => setForm(f => ({ ...f, taskStatus: e.target.value }))}>
+                    <option value="not-started">Not Started</option>
+                    <option value="processing">Processing</option>
+                    <option value="hold">On Hold</option>
+                    <option value="done">Done</option>
+                  </select>
+                </div>
+                <div className="col field" style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', paddingBottom: '6px' }}>
+                    <input type="checkbox" checked={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.checked }))} style={{ width: '16px', height: '16px', accentColor: '#ff9b4e' }} />
+                    <span className="field-label" style={{ margin: 0 }}>🔴 High Priority</span>
+                  </label>
+                </div>
+              </div>
+              {form.taskStatus === 'hold' && (
+                <div className="field">
+                  <label className="field-label">Hold Reason *</label>
+                  <input className="field-input" value={form.holdReason} onChange={e => setForm(f => ({ ...f, holdReason: e.target.value }))} placeholder="Why is this on hold? (visible to designer)" />
+                </div>
+              )}
+              <div className="field">
+                <label className="field-label">PM Notes (visible to designer)</label>
+                <textarea className="field-textarea" value={form.pmNotes} onChange={e => setForm(f => ({ ...f, pmNotes: e.target.value }))} placeholder="Internal notes, client expectations, references…" style={{ minHeight: '56px' }} />
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                 <button className="btn" onClick={() => setShowForm(false)}>Cancel</button>
                 <button className="btn btn-primary" onClick={saveTask} disabled={saving || !form.clientId || !form.name || !form.deadline}>
@@ -397,7 +424,10 @@ export default function PMTasksPage() {
                     return (
                       <div key={t.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${sm.color}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, marginBottom: '3px', fontSize: '14px' }}>{t.name}</div>
+                          <div style={{ fontWeight: 600, marginBottom: '3px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {t.priority && <span title="High Priority" style={{ color: '#ff9b4e', fontSize: '12px' }}>🔴</span>}
+                            {t.name}
+                          </div>
                           <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                             <span>→ <strong>{t.assignedTo}</strong></span>
                             <span className="tag">{t.deliverableType}</span>
@@ -405,8 +435,31 @@ export default function PMTasksPage() {
                             <span style={{ color: deadlineColor(t.deadline, isApproved), fontWeight: 500 }}>
                               {deadlineLabel(t.deadline, isApproved)}
                             </span>
+                            {/* Task workflow status badge */}
+                            {t.taskStatus && t.taskStatus !== 'not-started' && (() => {
+                              const ts = t.taskStatus as string
+                              const tsMeta: Record<string, { label: string; color: string; bg: string }> = {
+                                processing: { label: '⚙ Processing', color: '#5b9cf6', bg: '#5b9cf618' },
+                                hold: { label: '⏸ On Hold', color: '#ff9b4e', bg: '#ff9b4e18' },
+                                done: { label: '✓ Done', color: '#4ede8c', bg: '#4ede8c18' },
+                              }
+                              const meta = tsMeta[ts]
+                              return meta ? (
+                                <span style={{ padding: '1px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: meta.bg, color: meta.color }}>{meta.label}</span>
+                              ) : null
+                            })()}
                           </div>
-                          {t.brief && t.brief.length < 120 && (
+                          {t.holdReason && t.taskStatus === 'hold' && (
+                            <div style={{ fontSize: '11px', color: '#ff9b4e', marginTop: '3px', padding: '3px 8px', background: '#ff9b4e10', borderRadius: '4px', fontStyle: 'italic' }}>
+                              Hold: {t.holdReason}
+                            </div>
+                          )}
+                          {t.pmNotes && (
+                            <div style={{ fontSize: '11px', color: '#5b9cf6', marginTop: '3px', padding: '3px 8px', background: '#5b9cf610', borderRadius: '4px' }}>
+                              📝 {t.pmNotes}
+                            </div>
+                          )}
+                          {t.brief && t.brief.length < 120 && !t.pmNotes && (
                             <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '3px', fontStyle: 'italic' }}>{t.brief}</div>
                           )}
                         </div>

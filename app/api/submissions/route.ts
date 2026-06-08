@@ -16,9 +16,10 @@ import { randomUUID } from 'crypto'
 
 // Designer email map — add emails here when available
 const DESIGNER_EMAILS: Record<string, string> = {
-  Anshu:   process.env.EMAIL_ANSHU   || '',
-  Amit:    process.env.EMAIL_AMIT    || '',
-  Ranjeet: process.env.EMAIL_RANJEET || '',
+  Anshu:    process.env.EMAIL_ANSHU    || '',
+  Amit:     process.env.EMAIL_AMIT     || '',
+  Ranjeet:  process.env.EMAIL_RANJEET  || '',
+  Himanshu: process.env.EMAIL_HIMANSHU || '',
 }
 
 async function getUser(req: NextRequest) {

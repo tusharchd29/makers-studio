@@ -19,12 +19,26 @@ export interface SOWEntry {
   videos: number; photos: number; carousels: number; youtubeShorts: number
 }
 
+export type TaskStatus = 'not-started' | 'processing' | 'hold' | 'done'
+
 export interface Task {
   id: string; clientId: string; clientName: string; name: string
   deliverableType: DeliverableType; assignedTo: string
   deadline: string; brief?: string; createdAt: string; createdBy: string
   sowMonth: string  // e.g. "June 2026" — which month this counts toward
   asanaGid?: string  // Asana task GID — set when task is imported from Asana
+  // New fields
+  taskStatus?: TaskStatus   // processing | hold | done | not-started
+  holdReason?: string       // reason when status is "hold"
+  priority?: boolean        // true = high priority
+  pmNotes?: string          // internal PM notes/comments visible to designer
+}
+
+export const TASK_STATUS_META: Record<TaskStatus, { label: string; color: string; bg: string; icon: string }> = {
+  'not-started': { label: 'Not Started', color: '#aaa',      bg: '#aaa18',     icon: 'ti-circle' },
+  'processing':  { label: 'Processing',  color: '#5b9cf6',   bg: '#5b9cf618',  icon: 'ti-refresh' },
+  'hold':        { label: 'On Hold',     color: '#ff9b4e',   bg: '#ff9b4e18',  icon: 'ti-pause' },
+  'done':        { label: 'Done',        color: '#4ede8c',   bg: '#4ede8c18',  icon: 'ti-circle-check' },
 }
 
 // A single draft submission (gets overwritten on resubmit)

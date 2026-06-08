@@ -52,6 +52,10 @@ export async function getTasks(): Promise<Task[]> {
     brief: r.brief, createdAt: r.created_at,
     createdBy: r.created_by, sowMonth: r.sow_month,
     asanaGid: r.asana_gid || undefined,
+    taskStatus: (r.task_status as never) || undefined,
+    holdReason: r.hold_reason || undefined,
+    priority: r.priority === 'true',
+    pmNotes: r.pm_notes || undefined,
   }))
 }
 
@@ -64,6 +68,10 @@ export async function saveTask(task: Task) {
     brief: task.brief || '', created_at: task.createdAt,
     created_by: task.createdBy, sow_month: task.sowMonth || '',
     asana_gid: task.asanaGid || '',
+    task_status: task.taskStatus || '',
+    hold_reason: task.holdReason || '',
+    priority: task.priority ? 'true' : 'false',
+    pm_notes: task.pmNotes || '',
   })
   await logActivity(
     task.createdBy || 'PM', 'Task Created', task.name,

@@ -66,7 +66,7 @@ export async function uploadFile(
     const s3     = getS3Client()
     const bucket = getBucket()
     const key    = `${folderPath}/${fileName}`
-    const endpoint = process.env.DO_SPACES_ENDPOINT!
+    const region = process.env.DO_SPACES_REGION!
 
     await s3.send(new PutObjectCommand({
       Bucket:      bucket,
@@ -76,7 +76,13 @@ export async function uploadFile(
       ACL:         'public-read',
     }))
 
-    const viewUrl = `${endpoint}/${bucket}/${key}`
+    // DigitalOcean Spaces public URL format:
+    // If CDN is enabled: https://<bucket>.cdn.digitaloceanspaces.com/<key>
+    // If CDN is disabled: https://<bucket>.<region>.digitaloceanspaces.com/<key>
+    // Use DO_SPACES_CDN_ENDPOINT env if set (for custom CDN domains), otherwise build from region
+    const cdnBase = process.env.DO_SPACES_CDN_ENDPOINT
+      || `https://${bucket}.${region}.digitaloceanspaces.com`
+    const viewUrl = `${cdnBase}/${key}`
     return { fileId: key, viewUrl }
   })
 }

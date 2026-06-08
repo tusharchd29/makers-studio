@@ -188,7 +188,17 @@ function DesignerTasksPageInner() {
                 <div key={t.id} style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${STATUS_META[status]?.color || 'transparent'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, marginBottom: '3px' }}>{t.name}</div>
+                      <div style={{ fontWeight: 600, marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {t.priority && <span title="High Priority" style={{ color: '#ff9b4e', fontSize: '12px' }}>🔴</span>}
+                        {t.name}
+                        {/* Task workflow status badge */}
+                        {t.taskStatus === 'hold' && (
+                          <span style={{ padding: '1px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: '#ff9b4e18', color: '#ff9b4e' }}>⏸ On Hold</span>
+                        )}
+                        {t.taskStatus === 'processing' && (
+                          <span style={{ padding: '1px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: '#5b9cf618', color: '#5b9cf6' }}>⚙ Processing</span>
+                        )}
+                      </div>
                       <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <span style={{ fontWeight: 500, color: 'var(--text)' }}>{t.clientName}</span>
                         <span className="tag">{t.deliverableType}</span>
@@ -196,7 +206,18 @@ function DesignerTasksPageInner() {
                           {status === 'approved' ? '✓ Approved' : deadlineLabel(t.deadline)}
                         </span>
                       </div>
-                      {t.brief && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>{t.brief}</div>}
+                      {t.holdReason && t.taskStatus === 'hold' && (
+                        <div style={{ marginTop: '6px', padding: '6px 10px', background: '#ff9b4e10', border: '1px solid #ff9b4e30', borderRadius: '6px', fontSize: '12px', color: '#ff9b4e' }}>
+                          ⏸ On hold: {t.holdReason}
+                        </div>
+                      )}
+                      {t.pmNotes && (
+                        <div style={{ marginTop: '6px', padding: '6px 10px', background: '#5b9cf610', border: '1px solid #5b9cf630', borderRadius: '6px', fontSize: '12px', color: 'var(--text2)' }}>
+                          <span style={{ fontWeight: 700, color: '#5b9cf6', fontSize: '10px', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>PM Notes</span>
+                          {t.pmNotes}
+                        </div>
+                      )}
+                      {t.brief && !t.pmNotes && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>{t.brief}</div>}
                       {/* PM feedback inline */}
                       {sub?.pmComment && needsWork && (
                         <div style={{ marginTop: '8px', padding: '8px 10px', background: '#5b9cf618', border: '1px solid #5b9cf640', borderRadius: '6px', fontSize: '12px' }}>
