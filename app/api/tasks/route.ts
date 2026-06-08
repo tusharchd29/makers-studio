@@ -47,19 +47,26 @@ export async function POST(req: NextRequest) {
   // 1. Save to Makers Studio Sheet first — always succeeds independently
   await saveTask(task)
 
-  // 2. Fire-and-forget: sync back to Asana if this is an Asana import
+  // 2. Await Asana sync (with timeout) — return asanaSynced flag so UI can show status
+  let asanaSynced = false
   if (task.asanaGid) {
-    syncImportToAsana({
-      taskGid:         task.asanaGid,
-      designerName:    task.assignedTo,
-      deliverableType: task.deliverableType,
-      sowMonth:        task.sowMonth,
-      brief:           task.brief,
-      pmName:          user.name,
-    }).catch(() => { /* never block — Asana sync failure is silent */ })
+    try {
+      await Promise.race([
+        syncImportToAsana({
+          taskGid:         task.asanaGid,
+          designerName:    task.assignedTo,
+          deliverableType: task.deliverableType,
+          sowMonth:        task.sowMonth,
+          brief:           task.brief,
+          pmName:          user.name,
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      ])
+      asanaSynced = true
+    } catch { asanaSynced = false }
   }
 
-  return NextResponse.json(task)
+  return NextResponse.json({ ...task, asanaSynced })
 }
 
 // PUT — PM edits an existing task (assigned designer, brief, deliverable type etc.)
@@ -71,19 +78,26 @@ export async function PUT(req: NextRequest) {
   // 1. Save to Sheet
   await saveTask(body)
 
-  // 2. Fire-and-forget: sync back to Asana if task has an asanaGid
+  // 2. Await Asana sync (with timeout) — return asanaSynced flag
+  let asanaSynced = false
   if (body.asanaGid) {
-    syncEditToAsana({
-      taskGid:         body.asanaGid,
-      designerName:    body.assignedTo,
-      deliverableType: body.deliverableType,
-      sowMonth:        body.sowMonth || '',
-      brief:           body.brief   || '',
-      pmName:          user.name,
-    }).catch(() => { /* never block */ })
+    try {
+      await Promise.race([
+        syncEditToAsana({
+          taskGid:         body.asanaGid,
+          designerName:    body.assignedTo,
+          deliverableType: body.deliverableType,
+          sowMonth:        body.sowMonth || '',
+          brief:           body.brief   || '',
+          pmName:          user.name,
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      ])
+      asanaSynced = true
+    } catch { asanaSynced = false }
   }
 
-  return NextResponse.json(body)
+  return NextResponse.json({ ...body, asanaSynced })
 }
 
 export async function DELETE(req: NextRequest) {
