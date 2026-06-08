@@ -79,10 +79,11 @@ export const CLIENTS: Client[] = [
   { id: 'body-temple', name: 'Body Temple' },
 ]
 export const USERS = [
-  { name: 'Anshu',   role: 'designer' as UserRole, designerType: 'video'   as DesignerType },
-  { name: 'Amit',    role: 'designer' as UserRole, designerType: 'video'   as DesignerType },
-  { name: 'Ranjeet', role: 'designer' as UserRole, designerType: 'graphic' as DesignerType },
-  { name: 'PM',      role: 'pm'       as UserRole },
+  { name: 'Anshu',    role: 'designer' as UserRole, designerType: 'video'   as DesignerType },
+  { name: 'Amit',     role: 'designer' as UserRole, designerType: 'video'   as DesignerType },
+  { name: 'Himanshu', role: 'designer' as UserRole, designerType: 'video'   as DesignerType },
+  { name: 'Ranjeet',  role: 'designer' as UserRole, designerType: 'graphic' as DesignerType },
+  { name: 'PM',       role: 'pm'       as UserRole },
 ]
 
 export const DELIVERABLE_TYPES: DeliverableType[] = [
