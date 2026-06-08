@@ -1,6 +1,6 @@
 'use client'
-import { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Topbar from '@/components/Topbar'
 import { Task } from '@/lib/types'
 
@@ -38,7 +38,7 @@ function StatusPill({ s }: { s: string }) {
   return <span style={{ padding: '3px 9px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: m.bg, color: m.color, whiteSpace: 'nowrap' }}>{m.label}</span>
 }
 
-export default function DesignerTasksPage() {
+function DesignerTasksPageInner() {
   const [user, setUser] = useState<{ name: string; role: string; designerType?: string } | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [subMap, setSubMap] = useState<Record<string, { status: string; pmComment: string; submissionId: string }>>({})
@@ -46,6 +46,23 @@ export default function DesignerTasksPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [filterClient, setFilterClient] = useState('')
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const loadData = useCallback((userName: string) => {
+    Promise.all([
+      fetch('/api/tasks').then(r => r.json()),
+      fetch('/api/submissions').then(r => r.json()),
+    ]).then(([t, s]) => {
+      if (Array.isArray(t)) setTasks(t.filter((task: Task) => task.assignedTo === userName))
+      if (Array.isArray(s)) {
+        const map: Record<string, { status: string; pmComment: string; submissionId: string }> = {}
+        s.forEach((sub: { taskId: string; status: string; pmComment: string; id: string }) => {
+          if (!map[sub.taskId]) map[sub.taskId] = { status: sub.status, pmComment: sub.pmComment, submissionId: sub.id }
+        })
+        setSubMap(map)
+      }
+    })
+  }, [])
 
   useEffect(() => {
     const stored = localStorage.getItem('ms_user')
@@ -53,21 +70,16 @@ export default function DesignerTasksPage() {
     const u = JSON.parse(stored)
     if (u.role !== 'designer') { router.push('/pm/dashboard'); return }
     setUser(u)
-    Promise.all([
-      fetch('/api/tasks').then(r => r.json()),
-      fetch('/api/submissions').then(r => r.json()),
-    ]).then(([t, s]) => {
-      if (Array.isArray(t)) setTasks(t)
-      if (Array.isArray(s)) {
-        const map: Record<string, { status: string; pmComment: string; submissionId: string }> = {}
-        // keep latest submission per task
-        s.forEach((sub: { taskId: string; status: string; pmComment: string; id: string }) => {
-          if (!map[sub.taskId]) map[sub.taskId] = { status: sub.status, pmComment: sub.pmComment, submissionId: sub.id }
-        })
-        setSubMap(map)
-      }
-    })
-  }, [router])
+    loadData(u.name)
+  }, [router, loadData])
+
+  // Re-fetch when returning from submit page
+  useEffect(() => {
+    const stored = localStorage.getItem('ms_user')
+    if (!stored) return
+    const u = JSON.parse(stored)
+    if (searchParams.get('refresh')) loadData(u.name)
+  }, [searchParams, loadData])
 
   const clients = useMemo(() => [...new Set(tasks.map(t => t.clientName))].sort(), [tasks])
 
@@ -208,5 +220,14 @@ export default function DesignerTasksPage() {
         )}
       </div>
     </>
+  )
+}
+
+import { Suspense } from 'react'
+export default function DesignerTasksPage() {
+  return (
+    <Suspense fallback={<div className="empty">Loading…</div>}>
+      <DesignerTasksPageInner />
+    </Suspense>
   )
 }
