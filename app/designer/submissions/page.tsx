@@ -235,12 +235,16 @@ export default function MySubmissionsPage() {
                     </div>
                   )}
 
-                  {/* View link for approved */}
+                  {/* View + Download links for approved */}
                   {s.status === 'approved' && s.viewUrl && s.viewUrl !== '#' && (
-                    <div style={{ marginTop: '10px' }}>
+                    <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
                       <a href={s.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm"
                         style={{ fontSize: '11px' }}>
                         View Approved File ↗
+                      </a>
+                      <a href={s.viewUrl} download={s.fileName} className="btn btn-sm"
+                        style={{ fontSize: '11px' }}>
+                        ⬇ Download
                       </a>
                     </div>
                   )}
