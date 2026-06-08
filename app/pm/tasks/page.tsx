@@ -673,8 +673,9 @@ export default function PMTasksPage() {
             )}
           </div>
         )}
+      </div>
 
-        {/* ── Reopen Modal ─────────────────────────────────────── */}
+{/* ── Reopen Modal ─────────────────────────────────────── */}
         {reopenModal && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(2px)' }}>
             <div style={{ background: 'var(--surface)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '420px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
@@ -732,7 +733,6 @@ export default function PMTasksPage() {
             </div>
           </div>
         )}
-      </div>
     </>
   )
 }
