@@ -13,7 +13,7 @@ const PM_TABS = [
 ]
 
 interface Client { id: string; name: string }
-const DESIGNERS = ['Anshu', 'Amit', 'Ranjeet']
+const DESIGNERS = ['Anshu', 'Amit', 'Himanshu', 'Ranjeet']
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   'not-submitted': { label: 'Not Submitted', color: 'var(--text3)', bg: 'var(--surface2)' },
