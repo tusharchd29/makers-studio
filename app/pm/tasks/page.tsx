@@ -4,6 +4,14 @@ import { useRouter } from 'next/navigation'
 import Topbar from '@/components/Topbar'
 import { Task, DELIVERABLE_TYPES, SOW_MONTHS } from '@/lib/types'
 
+interface AsanaTask {
+  gid:         string
+  name:        string
+  due_on:      string | null
+  notes:       string
+  projectName: string
+}
+
 const PM_TABS = [
   { label: 'Dashboard',    href: '/pm/dashboard', icon: 'ti-layout-dashboard' },
   { label: 'Review Queue', href: '/pm/review',    icon: 'ti-eye-check' },
@@ -50,6 +58,12 @@ export default function PMTasksPage() {
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
   const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState<'studio' | 'asana'>('studio')
+  const [asanaTasks, setAsanaTasks] = useState<AsanaTask[]>([])
+  const [asanaLoading, setAsanaLoading] = useState(false)
+  const [asanaError, setAsanaError] = useState('')
+  const [importing, setImporting] = useState<string | null>(null) // gid being imported
+  const [importForm, setImportForm] = useState<Record<string, { deliverableType: string; assignedTo: string; sowMonth: string; brief: string }>>({})
   const [search, setSearch] = useState('')
   const [filterClient, setFilterClient] = useState('')
   const [filterDesigner, setFilterDesigner] = useState('')
@@ -81,6 +95,59 @@ export default function PMTasksPage() {
     setUser(u)
     loadData()
   }, [router, loadData])
+
+  const loadAsanaTasks = async () => {
+    setAsanaLoading(true); setAsanaError('')
+    try {
+      const res = await fetch('/api/asana-tasks')
+      if (!res.ok) throw new Error('Failed to fetch')
+      const data = await res.json()
+      setAsanaTasks(Array.isArray(data) ? data : [])
+      // Init import forms for each task
+      const forms: Record<string, { deliverableType: string; assignedTo: string; sowMonth: string; brief: string }> = {}
+      for (const t of data) {
+        forms[t.gid] = { deliverableType: 'Reel', assignedTo: 'Anshu', sowMonth: SOW_MONTHS()[1] || '', brief: t.notes || '' }
+      }
+      setImportForm(forms)
+    } catch {
+      setAsanaError('Could not load Asana tasks. Check ASANA_PAT env var.')
+    } finally {
+      setAsanaLoading(false)
+    }
+  }
+
+  const importAsanaTask = async (t: AsanaTask) => {
+    const form = importForm[t.gid]
+    if (!form || !form.deliverableType || !form.assignedTo) return
+    setImporting(t.gid)
+    // Match client name from Asana project name to Makers Studio client list
+    const client = clients.find(c =>
+      c.name.toLowerCase().includes(t.projectName.toLowerCase()) ||
+      t.projectName.toLowerCase().includes(c.name.toLowerCase())
+    ) || { id: t.projectName.toLowerCase().replace(/\s+/g, '-'), name: t.projectName }
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          asanaGid:        t.gid,
+          clientId:        client.id,
+          clientName:      client.name,
+          name:            t.name,
+          deliverableType: form.deliverableType,
+          assignedTo:      form.assignedTo,
+          deadline:        t.due_on || '',
+          brief:           form.brief,
+          sowMonth:        form.sowMonth,
+        }),
+      })
+      const saved = await res.json()
+      setTasks(prev => [saved, ...prev])
+      setAsanaTasks(prev => prev.filter(a => a.gid !== t.gid))
+    } finally {
+      setImporting(null)
+    }
+  }
 
   function openNew() {
     setEditTask(null)
@@ -175,17 +242,31 @@ export default function PMTasksPage() {
         )}
 
         {/* Header + inline filters */}
+        {/* Tab switcher: Studio Tasks vs From Asana */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-          <div className="section-title">
-            Tasks
-            <span style={{ color: 'var(--text3)', fontWeight: 400, fontSize: '12px', marginLeft: '6px' }}>
-              {filtered.length === tasks.length ? tasks.length : `${filtered.length} of ${tasks.length}`}
-            </span>
+          <div style={{ display: 'flex', gap: '4px', background: 'var(--surface2)', padding: '3px', borderRadius: '10px' }}>
+            <button
+              onClick={() => setActiveTab('studio')}
+              style={{ padding: '5px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                background: activeTab === 'studio' ? '#fff' : 'transparent',
+                color: activeTab === 'studio' ? 'var(--text)' : 'var(--text3)',
+                boxShadow: activeTab === 'studio' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>
+              Studio Tasks <span style={{ marginLeft: '4px', opacity: 0.6 }}>{tasks.length}</span>
+            </button>
+            <button
+              onClick={() => { setActiveTab('asana'); if (asanaTasks.length === 0 && !asanaLoading) loadAsanaTasks() }}
+              style={{ padding: '5px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                background: activeTab === 'asana' ? '#fff' : 'transparent',
+                color: activeTab === 'asana' ? 'var(--text)' : 'var(--text3)',
+                boxShadow: activeTab === 'asana' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none' }}>
+              From Asana {asanaTasks.length > 0 && <span style={{ marginLeft: '4px', background: '#7DC242', color: '#fff', borderRadius: '20px', padding: '1px 6px', fontSize: '10px' }}>{asanaTasks.length}</span>}
+            </button>
           </div>
-          <button className="btn btn-sm btn-primary" onClick={openNew}>+ New Task</button>
+          {activeTab === 'studio' && <button className="btn btn-sm btn-primary" onClick={openNew}>+ New Task</button>}
+          {activeTab === 'asana'  && <button className="btn btn-sm" onClick={loadAsanaTasks} disabled={asanaLoading}>{asanaLoading ? 'Loading…' : '↻ Refresh'}</button>}
         </div>
 
-        {/* Inline filters */}
+        {activeTab === 'studio' && (<>{/* Inline filters */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '160px' }}>
             <i className="ti ti-search" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: '13px' }} />
@@ -329,6 +410,94 @@ export default function PMTasksPage() {
               </div>
             )
           })
+        )}
+      </>)}
+
+        {/* ── From Asana Tab ────────────────────────────────────── */}
+        {activeTab === 'asana' && (
+          <div>
+            {asanaError && (
+              <div style={{ background: '#FEF2F2', border: '0.5px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#DC2626', fontSize: 12, marginBottom: 14 }}>
+                {asanaError}
+              </div>
+            )}
+            {asanaLoading ? (
+              <div className="empty">Fetching tasks from Asana…</div>
+            ) : asanaTasks.length === 0 ? (
+              <div className="empty">
+                <div style={{ marginBottom: 8 }}>No pending Asana tasks to import.</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>All tasks are already in Makers Studio, or Asana has no incomplete tasks.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {asanaTasks.map(t => {
+                  const form = importForm[t.gid] || { deliverableType: 'Reel', assignedTo: 'Anshu', sowMonth: '', brief: '' }
+                  const isImporting = importing === t.gid
+                  return (
+                    <div key={t.gid} className="card" style={{ padding: '14px 16px', borderLeft: '3px solid #29ABE2' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{t.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ background: '#E6F1FB', color: '#185FA5', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>{t.projectName}</span>
+                            {t.due_on && <span>Due {t.due_on}</span>}
+                          </div>
+                          {t.notes && t.notes.length > 0 && (
+                            <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4, fontStyle: 'italic', maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {t.notes.split('\n')[0]}
+                            </div>
+                          )}
+                        </div>
+                        {/* Import controls */}
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', flexWrap: 'wrap', flexShrink: 0 }}>
+                          <div>
+                            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>Type</div>
+                            <select className="field-select" style={{ fontSize: 11, padding: '4px 8px', minWidth: 90 }}
+                              value={form.deliverableType}
+                              onChange={e => setImportForm(f => ({ ...f, [t.gid]: { ...form, deliverableType: e.target.value } }))}>
+                              {['Reel','Story','Static','Carousel','YouTube Short','Product Video','Photo'].map(d => <option key={d}>{d}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>Assign to</div>
+                            <select className="field-select" style={{ fontSize: 11, padding: '4px 8px', minWidth: 90 }}
+                              value={form.assignedTo}
+                              onChange={e => setImportForm(f => ({ ...f, [t.gid]: { ...form, assignedTo: e.target.value } }))}>
+                              {['Anshu','Amit','Himanshu','Ranjeet'].map(d => <option key={d}>{d}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>SOW Month</div>
+                            <select className="field-select" style={{ fontSize: 11, padding: '4px 8px', minWidth: 100 }}
+                              value={form.sowMonth}
+                              onChange={e => setImportForm(f => ({ ...f, [t.gid]: { ...form, sowMonth: e.target.value } }))}>
+                              <option value="">Select…</option>
+                              {SOW_MONTHS().map(m => <option key={m}>{m}</option>)}
+                            </select>
+                          </div>
+                          <button
+                            className="btn btn-sm btn-primary"
+                            disabled={isImporting || !form.deliverableType || !form.assignedTo}
+                            onClick={() => importAsanaTask(t)}
+                            style={{ alignSelf: 'flex-end' }}>
+                            {isImporting ? 'Importing…' : '⬇ Import'}
+                          </button>
+                        </div>
+                      </div>
+                      {/* Brief field */}
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 3 }}>Brief for designer (editable before import)</div>
+                        <textarea className="field-textarea" style={{ fontSize: 11, minHeight: 48 }}
+                          value={form.brief}
+                          onChange={e => setImportForm(f => ({ ...f, [t.gid]: { ...form, brief: e.target.value } }))}
+                          placeholder="Add or edit brief…" />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </>
