@@ -26,6 +26,7 @@ export default function PMTasksPage() {
   const [tasks, setTasks]     = useState<Task[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [approvedTaskIds, setApprovedTaskIds] = useState<Set<string>>(new Set())
+  const [subStatusMap, setSubStatusMap] = useState<Record<string, string>>({})
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
@@ -52,6 +53,9 @@ export default function PMTasksPage() {
       if (Array.isArray(subs)) {
         const ids = new Set<string>(subs.filter((s: {status: string; taskId: string}) => s.status === 'approved').map((s: {taskId: string}) => s.taskId))
         setApprovedTaskIds(ids)
+        const map: Record<string, string> = {}
+        subs.forEach((s: {taskId: string; status: string}) => { map[s.taskId] = s.status })
+        setSubStatusMap(map)
       }
     })
   }, [router])
@@ -249,9 +253,11 @@ export default function PMTasksPage() {
                       {t.brief && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>{t.brief}</div>}
                     </div>
                     <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
-                      {approvedTaskIds.has(t.id) && (
-                        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#4ede8c20', color: '#4ede8c', fontWeight: 700 }}>✓ Approved</span>
-                      )}
+                      {subStatusMap[t.id] === 'approved' && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#4ede8c20', color: '#4ede8c', fontWeight: 700 }}>✓ Approved</span>}
+                      {subStatusMap[t.id] === 'pending' && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#ff9b4e20', color: '#ff9b4e', fontWeight: 700 }}>⏳ In Review</span>}
+                      {subStatusMap[t.id] === 'revision' && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#5b9cf620', color: '#5b9cf6', fontWeight: 700 }}>↩ Revision</span>}
+                      {subStatusMap[t.id] === 'rejected' && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#ff5f5f20', color: '#ff5f5f', fontWeight: 700 }}>✕ Rejected</span>}
+                      {!subStatusMap[t.id] && <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: 'var(--surface2)', color: 'var(--text3)', fontWeight: 600 }}>Not submitted</span>}
                       <button className="btn btn-sm" onClick={() => openEdit(t)}>Edit</button>
                       <button className="btn btn-sm btn-danger" onClick={() => deleteTask(t.id)}>Delete</button>
                     </div>
