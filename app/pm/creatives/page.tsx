@@ -50,12 +50,13 @@ export default function PMCreativesPage() {
   const [approvedFiles, setApprovedFiles] = useState<ApprovedFile[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'approved' | 'all'>('approved')
+  const [activeTab, setActiveTab] = useState<'approved' | 'all' | 'history'>('approved')
   const [filterMonth, setFilterMonth] = useState('')
   const [filterClient, setFilterClient] = useState('')
   const [filterDesigner, setFilterDesigner] = useState('')
   const [filterType, setFilterType] = useState('')
   const [search, setSearch] = useState('')
+  const [historyFiles, setHistoryFiles] = useState<ApprovedFile[]>([])
   const [previewUrl, setPreviewUrl] = useState<{ url: string; name: string; isVideo: boolean } | null>(null)
   const router = useRouter()
 
@@ -66,14 +67,28 @@ export default function PMCreativesPage() {
     if (u.role !== 'pm') { router.push('/designer/tasks'); return }
     setUser(u)
     Promise.all([
-      fetch('/api/approved').then(r => r.json()),
+      fetch('/api/approved').then(r => r.json()),           // deduplicated
       fetch('/api/submissions').then(r => r.json()),
-    ]).then(([approved, subs]) => {
+      fetch('/api/approved?history=true').then(r => r.json()), // full history
+    ]).then(([approved, subs, hist]) => {
       if (Array.isArray(approved)) setApprovedFiles(approved.slice().reverse())
       if (Array.isArray(subs)) setSubmissions(subs)
+      if (Array.isArray(hist)) setHistoryFiles(hist.slice().reverse())
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [router])
+
+  // Filtered history
+  const filteredHistory = useMemo(() => historyFiles.filter(f => {
+    if (filterMonth && f.sowMonth !== filterMonth) return false
+    if (filterClient && f.clientName !== filterClient) return false
+    if (filterDesigner && f.designerName !== filterDesigner) return false
+    if (search) {
+      const q = search.toLowerCase()
+      if (!f.taskName?.toLowerCase().includes(q) && !f.clientName?.toLowerCase().includes(q)) return false
+    }
+    return true
+  }), [historyFiles, filterMonth, filterClient, filterDesigner, search])
 
   // Filter options
   const months = useMemo(() => [...new Set([
@@ -188,7 +203,7 @@ export default function PMCreativesPage() {
 
         {/* Tab switcher */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
-          {([['approved', '✅ Approved Creatives'], ['all', '📋 All Submissions']] as const).map(([tab, label]) => (
+          {([['approved', '✅ Approved Creatives'], ['all', '📋 All Submissions'], ['history', '🗂 Approval History']] as const).map(([tab, label]) => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               padding: '8px 16px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
               background: 'none', border: 'none', fontFamily: 'inherit',
@@ -226,6 +241,46 @@ export default function PMCreativesPage() {
 
         {loading ? (
           <div className="empty">Loading creatives…</div>
+        ) : activeTab === 'history' ? (
+          filteredHistory.length === 0 ? (
+            <div className="empty">No approval history{hasFilters ? ' matches filters' : ''}.</div>
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: '12px', color: 'var(--text3)' }}>
+                Full approval log — every approval event including re-approvals after revisions. {filteredHistory.length} entries.
+              </div>
+              {filteredHistory.map((f, i) => {
+                const vid = isVideo(f.storagePath)
+                return (
+                  <div key={i} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '2px' }}>{f.taskName}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 500 }}>{f.clientName}</span>
+                        <span style={{ color: 'var(--border)' }}>·</span>
+                        <span>by <strong>{f.designerName}</strong></span>
+                        {f.deliverableType && <span className="tag">{f.deliverableType}</span>}
+                        {f.sowMonth && <span className="tag" style={{ background: '#4ede8c15', color: '#4ede8c', border: '0.5px solid #4ede8c40' }}>{f.sowMonth}</span>}
+                        <span style={{ color: 'var(--text3)', fontSize: '11px' }}>Draft {f.totalDrafts}</span>
+                        {f.approvedAt && <span style={{ color: 'var(--text3)', fontSize: '11px' }}>· {new Date(f.approvedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
+                        {f.approvedBy && <span style={{ color: 'var(--text3)', fontSize: '11px' }}>· by {f.approvedBy}</span>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                      {f.viewUrl && f.viewUrl !== '#' && (
+                        <>
+                          <button onClick={() => setPreviewUrl({ url: f.viewUrl, name: f.taskName, isVideo: vid })} className="btn btn-sm" style={{ fontSize: '11px' }}>
+                            <i className={`ti ${vid ? 'ti-player-play' : 'ti-eye'}`} /> Preview
+                          </button>
+                          <a href={f.viewUrl} download={f.taskName} className="btn btn-sm" style={{ fontSize: '11px' }}>⬇</a>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
         ) : activeTab === 'approved' ? (
           filteredApproved.length === 0 ? (
             <div className="empty">No approved creatives{hasFilters ? ' match these filters' : ' yet'}.</div>
