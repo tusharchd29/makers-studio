@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const USERS = ['Anshu', 'Amit', 'Ranjeet', 'PM']
+const USERS = ['Anshu', 'Amit', 'Himanshu', 'Ranjeet', 'PM']
 
 export default function LoginPage() {
   const [selected, setSelected] = useState('')
@@ -99,7 +99,7 @@ export default function LoginPage() {
           <p style={{ textAlign: 'center', fontSize: '10px', color: '#bbb', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '20px' }}>Creative Asset Portal</p>
 
           {/* Name selector */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '1.25rem' }}>
             {USERS.map(u => (
               <button key={u} onClick={() => { setSelected(u); setPin(''); setError('') }}
                 style={{
