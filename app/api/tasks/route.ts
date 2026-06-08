@@ -144,12 +144,14 @@ export async function PATCH(req: NextRequest) {
   if (user.role === 'pm') {
     const updated = {
       ...task,
-      priority:  body.priority  !== undefined ? body.priority  : task.priority,
-      pmNotes:   body.pmNotes   !== undefined ? body.pmNotes   : task.pmNotes,
-      pmStatus:  body.pmStatus  !== undefined ? body.pmStatus  : task.pmStatus,
-      // PM can reopen: reset taskStatus back to processing
+      priority:   body.priority   !== undefined ? body.priority   : task.priority,
+      pmNotes:    body.pmNotes    !== undefined ? body.pmNotes    : task.pmNotes,
+      pmStatus:   body.pmStatus   !== undefined ? body.pmStatus   : task.pmStatus,
+      assignedTo: body.reopen && body.assignedTo ? body.assignedTo : task.assignedTo,
+      // PM can reopen: reset taskStatus back to processing, clear pmStatus
       taskStatus: body.reopen ? 'processing' as const : task.taskStatus,
-      postingId: task.postingId,
+      ...(body.reopen ? { pmStatus: undefined, postingId: undefined } : {}),
+      postingId: body.reopen ? undefined : task.postingId,
     }
 
     // Log reopen
@@ -160,7 +162,9 @@ export async function PATCH(req: NextRequest) {
         taskId: task.id, taskName: task.name, clientName: task.clientName,
         oldValue: task.taskStatus || 'done',
         newValue: 'processing',
-        detail: `PM reopened task (was: ${task.taskStatus || 'done'})`,
+        detail: body.assignedTo && body.assignedTo !== task.assignedTo
+          ? `Reassigned: ${task.assignedTo} → ${body.assignedTo}`
+          : `Kept assigned to ${task.assignedTo}`,
       })
     }
 

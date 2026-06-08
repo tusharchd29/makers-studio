@@ -67,6 +67,8 @@ export default function PMTasksPage() {
   const [importing, setImporting] = useState<string | null>(null) // gid being imported
   const [importForm, setImportForm] = useState<Record<string, { deliverableType: string; assignedTo: string; sowMonth: string; brief: string }>>({})
   // Asana tab filters
+  const [reopenModal, setReopenModal] = useState<Task | null>(null)
+  const [reopenAssignTo, setReopenAssignTo] = useState('')
   const [asanaFilterClient, setAsanaFilterClient] = useState('')
   const [asanaFilterDue, setAsanaFilterDue]       = useState<'all' | 'overdue' | 'this-week' | 'upcoming' | 'no-date'>('all')
   const [asanaSearch, setAsanaSearch]             = useState('')
@@ -514,12 +516,7 @@ export default function PMTasksPage() {
                             <button
                               className="btn btn-sm"
                               style={{ color: '#ff9b4e', borderColor: '#ff9b4e40' }}
-                              onClick={async () => {
-                                if (!confirm(`Reopen "${t.name}"? This will reset the task status to Processing.`)) return
-                                const res = await fetch('/api/tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, reopen: true }) })
-                                const data = await res.json()
-                                if (data.ok) setTasks(prev => prev.map(x => x.id === t.id ? { ...x, taskStatus: 'processing' as never } : x))
-                              }}
+                              onClick={() => { setReopenModal(t); setReopenAssignTo(t.assignedTo) }}
                             >↺ Reopen</button>
                           )}
                         </div>
@@ -674,6 +671,65 @@ export default function PMTasksPage() {
               </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ── Reopen Modal ─────────────────────────────────────── */}
+        {reopenModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(2px)' }}>
+            <div style={{ background: 'var(--surface)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '420px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: '16px' }}>↺ Reopen Task</h3>
+              <p style={{ margin: '0 0 20px', fontSize: '13px', color: 'var(--text2)' }}>
+                <strong>{reopenModal.name}</strong> — {reopenModal.clientName}
+              </p>
+
+              <div className="field" style={{ marginBottom: '16px' }}>
+                <label className="field-label">Reassign To</label>
+                <select
+                  className="field-select"
+                  value={reopenAssignTo}
+                  onChange={e => setReopenAssignTo(e.target.value)}
+                >
+                  {['Anshu', 'Amit', 'Ranjeet', 'Himanshu'].map(d => (
+                    <option key={d} value={d}>
+                      {d}{d === reopenModal.assignedTo ? ' (current)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {reopenAssignTo !== reopenModal.assignedTo && (
+                <div style={{ padding: '8px 12px', background: '#ff9b4e12', border: '1px solid #ff9b4e30', borderRadius: '8px', fontSize: '12px', color: '#ff9b4e', marginBottom: '16px' }}>
+                  ⚠️ Reassigning from <strong>{reopenModal.assignedTo}</strong> → <strong>{reopenAssignTo}</strong>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => { setReopenModal(null); setReopenAssignTo('') }}
+                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: '13px' }}
+                >Cancel</button>
+                <button
+                  onClick={async () => {
+                    const res = await fetch('/api/tasks', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id: reopenModal.id, reopen: true, assignedTo: reopenAssignTo }),
+                    })
+                    const data = await res.json()
+                    if (data.ok) {
+                      setTasks(prev => prev.map(x => x.id === reopenModal.id
+                        ? { ...x, taskStatus: 'processing' as never, assignedTo: reopenAssignTo, pmStatus: undefined, postingId: undefined }
+                        : x
+                      ))
+                    }
+                    setReopenModal(null)
+                    setReopenAssignTo('')
+                  }}
+                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#ff9b4e', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                >↺ Confirm Reopen</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
