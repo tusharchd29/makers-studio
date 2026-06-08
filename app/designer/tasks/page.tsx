@@ -55,12 +55,12 @@ function DesignerTasksPageInner() {
     ]).then(([t, s]) => {
       if (Array.isArray(t)) setTasks(t.filter((task: Task) => task.assignedTo === userName))
       if (Array.isArray(s)) {
-        const map: Record<string, { status: string; pmComment: string; submissionId: string }> = {}
+        const map: Record<string, { status: string; pmComment: string; submissionId: string; draftNumber: number }> = {}
         // Keep latest submission per task (highest draftNumber)
         s.forEach((sub: { taskId: string; status: string; pmComment: string; id: string; draftNumber: number }) => {
           const existing = map[sub.taskId]
-          if (!existing || sub.draftNumber > (existing as {draftNumber?: number}).draftNumber) {
-            map[sub.taskId] = { status: sub.status, pmComment: sub.pmComment, submissionId: sub.id, draftNumber: sub.draftNumber } as never
+          if (!existing || sub.draftNumber > (existing.draftNumber ?? 0)) {
+            map[sub.taskId] = { status: sub.status, pmComment: sub.pmComment, submissionId: sub.id, draftNumber: sub.draftNumber }
           }
         })
         setSubMap(map)
