@@ -117,6 +117,36 @@ export async function notifyDesignerReviewed(opts: {
   } catch { /* never block main flow */ }
 }
 
+// ── Notify PM: designer put task on hold ──────────────────────────────────
+export async function notifyPMOnHold(opts: {
+  designerName: string
+  taskName: string
+  clientName: string
+  holdReason: string
+}) {
+  if (!PM_EMAILS.length || !process.env.NODEMAILER_EMAIL) return
+  try {
+    const transporter = getTransporter()
+    const html = `<div style="${baseStyle()}">${card(`
+      <h2 style="margin:0 0 6px;font-size:16px;color:#ff9b4e;">⏸ Task Put On Hold</h2>
+      <p style="margin:0 0 16px;font-size:13px;color:#666;">${opts.designerName} has put a task on hold and needs your attention.</p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;">
+        <tr><td style="padding:6px 0;color:#888;width:120px;">Designer</td><td style="font-weight:600;">${opts.designerName}</td></tr>
+        <tr><td style="padding:6px 0;color:#888;">Task</td><td style="font-weight:600;">${opts.taskName}</td></tr>
+        <tr><td style="padding:6px 0;color:#888;">Client</td><td>${opts.clientName}</td></tr>
+        <tr><td style="padding:6px 0;color:#888;vertical-align:top;">Reason</td><td style="color:#ff9b4e;font-weight:600;">"${opts.holdReason}"</td></tr>
+      </table>
+      <p style="margin-top:16px;font-size:12px;color:#888;">Please review and resolve the blocker so the designer can continue.</p>
+    `)}</div>`
+    await transporter.sendMail({
+      from: `"Makers Studio" <${process.env.NODEMAILER_EMAIL}>`,
+      to: PM_EMAILS.join(','),
+      subject: `[Makers Studio] ⏸ On Hold — ${opts.taskName} (${opts.clientName})`,
+      html,
+    })
+  } catch { /* never block main flow */ }
+}
+
 // ── Notify PM: deadline alert (called from cron) ──────────────────────────
 export async function notifyPMDeadlineAlert(tasks: {
   taskName: string

@@ -100,6 +100,76 @@ export async function PUT(req: NextRequest) {
   return NextResponse.json({ ...body, asanaSynced })
 }
 
+// PATCH — designer updates task status OR pm updates pmStatus (ready-to-post / posted)
+export async function PATCH(req: NextRequest) {
+  const user = await getUser(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const tasks = await getTasks()
+  const task = tasks.find(t => t.id === body.id)
+  if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Designer can update: taskStatus, holdReason
+  if (user.role === 'designer') {
+    if (task.assignedTo !== user.name) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const updated = { ...task, taskStatus: body.taskStatus, holdReason: body.holdReason || '' }
+    await saveTask(updated)
+
+    // Notify PM if going on hold
+    if (body.taskStatus === 'hold' && body.holdReason) {
+      const { notifyPMOnHold } = await import('@/lib/notify')
+      await notifyPMOnHold({
+        designerName: user.name,
+        taskName: task.name,
+        clientName: task.clientName,
+        holdReason: body.holdReason,
+      })
+    }
+    return NextResponse.json({ ok: true, task: updated })
+  }
+
+  // PM can update: priority, pmNotes, pmStatus (ready-to-post / posted)
+  if (user.role === 'pm') {
+    const updated = {
+      ...task,
+      priority:   body.priority  !== undefined ? body.priority  : task.priority,
+      pmNotes:    body.pmNotes   !== undefined ? body.pmNotes   : task.pmNotes,
+      pmStatus:   body.pmStatus  !== undefined ? body.pmStatus  : task.pmStatus,
+      postingId:  task.postingId,
+    }
+
+    // Auto-create in Postings app when PM marks ready-to-post
+    if (body.pmStatus === 'ready-to-post' && !task.postingId) {
+      try {
+        const postingsUrl = process.env.POSTINGS_APP_URL || 'https://postings-topaz.vercel.app'
+        const res = await fetch(`${postingsUrl}/api/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client:    task.clientName,
+            type:      task.deliverableType,
+            date:      task.deadline ? task.deadline.split('T')[0] : '',
+            time:      '',
+            title:     task.name,
+            caption:   task.brief || '',
+            asset:     '',
+            remarks:   `Auto-created from Makers Studio. Assigned: ${task.assignedTo}. SOW Month: ${task.sowMonth}`,
+            platforms: ['Instagram'],
+          }),
+        })
+        const data = await res.json()
+        if (data.ok && data.id) updated.postingId = data.id
+      } catch { /* don't block if Postings is down */ }
+    }
+
+    await saveTask(updated)
+    return NextResponse.json({ ok: true, task: updated })
+  }
+
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+}
+
 export async function DELETE(req: NextRequest) {
   const user = await getUser(req)
   if (!user || user.role !== 'pm') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

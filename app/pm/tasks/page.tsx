@@ -57,7 +57,7 @@ export default function PMTasksPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
-  const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: false, pmNotes: '' })
+  const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: 'none', pmNotes: '' })
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<'studio' | 'asana'>('studio')
   const [syncStatus, setSyncStatus] = useState<Record<string, 'syncing' | 'synced' | 'failed'>>({})
@@ -158,12 +158,12 @@ export default function PMTasksPage() {
 
   function openNew() {
     setEditTask(null)
-    setForm({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: false, pmNotes: '' })
+    setForm({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: 'none', pmNotes: '' })
     setShowForm(true)
   }
   function openEdit(t: Task) {
     setEditTask(t)
-    setForm({ clientId: t.clientId, name: t.name, deliverableType: t.deliverableType, assignedTo: t.assignedTo, deadline: t.deadline.split('T')[0], brief: t.brief || '', sowMonth: t.sowMonth || '', taskStatus: t.taskStatus || 'not-started', holdReason: t.holdReason || '', priority: t.priority || false, pmNotes: t.pmNotes || '' })
+    setForm({ clientId: t.clientId, name: t.name, deliverableType: t.deliverableType, assignedTo: t.assignedTo, deadline: t.deadline.split('T')[0], brief: t.brief || '', sowMonth: t.sowMonth || '', taskStatus: t.taskStatus || 'not-started', holdReason: t.holdReason || '', priority: t.priority || 'none', pmNotes: t.pmNotes || '' })
     setShowForm(true)
   }
 
@@ -365,10 +365,13 @@ export default function PMTasksPage() {
                   </select>
                 </div>
                 <div className="col field" style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', paddingBottom: '6px' }}>
-                    <input type="checkbox" checked={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.checked }))} style={{ width: '16px', height: '16px', accentColor: '#ff9b4e' }} />
-                    <span className="field-label" style={{ margin: 0 }}>🔴 High Priority</span>
-                  </label>
+                  <div style={{ width: '100%' }}>
+                    <label className="field-label">Priority</label>
+                    <select className="field-select" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}>
+                      <option value="none">— None</option>
+                      <option value="high">🔴 High Priority</option>
+                    </select>
+                  </div>
                 </div>
               </div>
               {form.taskStatus === 'hold' && (
@@ -479,6 +482,30 @@ export default function PMTasksPage() {
                           )}
                           {t.asanaGid && !syncStatus[t.id] && (
                             <span title={`Linked to Asana task ${t.asanaGid}`} style={{ fontSize: 10, color: '#29ABE2', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#29ABE2', display: 'inline-block' }} />Asana linked</span>
+                          )}
+                          {/* PM Status: Ready to Post / Posted — only show after task is done */}
+                          {(t.taskStatus === 'done' || t.pmStatus) && (
+                            <select
+                              value={t.pmStatus || ''}
+                              onChange={async e => {
+                                const val = e.target.value
+                                const res = await fetch('/api/tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, pmStatus: val }) })
+                                const data = await res.json()
+                                if (data.ok) {
+                                  setTasks(prev => prev.map(x => x.id === t.id ? { ...x, pmStatus: val as never, postingId: data.task?.postingId } : x))
+                                }
+                              }}
+                              style={{ fontSize: '11px', padding: '3px 7px', borderRadius: '6px', border: '1px solid #a855f740', background: t.pmStatus === 'posted' ? '#22c55e18' : t.pmStatus === 'ready-to-post' ? '#a855f718' : 'var(--surface)', color: t.pmStatus === 'posted' ? '#22c55e' : t.pmStatus === 'ready-to-post' ? '#a855f7' : 'var(--text2)', cursor: 'pointer', fontWeight: t.pmStatus ? 700 : 400 }}
+                            >
+                              <option value="">— PM Status</option>
+                              <option value="ready-to-post">🟣 Ready to Post</option>
+                              <option value="posted">✅ Posted</option>
+                            </select>
+                          )}
+                          {t.postingId && (
+                            <span title={`Postings ID: ${t.postingId}`} style={{ fontSize: 10, color: '#a855f7', display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#a855f7', display: 'inline-block' }} />In Postings
+                            </span>
                           )}
                           <button className="btn btn-sm" onClick={() => openEdit(t)}>Edit</button>
                           <button className="btn btn-sm btn-danger" onClick={() => deleteTask(t.id)}>Delete</button>

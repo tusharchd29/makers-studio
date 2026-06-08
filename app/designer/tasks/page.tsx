@@ -112,6 +112,24 @@ function DesignerTasksPageInner() {
     rejected: tasks.filter(t => subMap[t.id]?.status === 'rejected').length,
   }), [tasks, subMap])
 
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+  const [holdModal, setHoldModal] = useState<{ taskId: string; taskName: string } | null>(null)
+  const [holdReasonInput, setHoldReasonInput] = useState('')
+
+  async function updateTaskStatus(taskId: string, newStatus: string, holdReason?: string) {
+    setUpdatingStatus(taskId)
+    try {
+      await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, taskStatus: newStatus, holdReason: holdReason || '' }),
+      })
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, taskStatus: newStatus as never, holdReason: holdReason || '' } : t))
+    } finally {
+      setUpdatingStatus(null)
+    }
+  }
+
   if (!user) return null
 
   return (
@@ -238,11 +256,66 @@ function DesignerTasksPageInner() {
                           ⏳ Awaiting PM
                         </span>
                       )}
+                      {/* Designer task status selector */}
+                      {status !== 'approved' && (
+                        <select
+                          value={t.taskStatus || 'not-started'}
+                          disabled={updatingStatus === t.id}
+                          onChange={e => {
+                            const val = e.target.value
+                            if (val === 'hold') {
+                              setHoldModal({ taskId: t.id, taskName: t.name })
+                              setHoldReasonInput(t.holdReason || '')
+                            } else {
+                              updateTaskStatus(t.id, val)
+                            }
+                          }}
+                          style={{ fontSize: '11px', padding: '3px 7px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}
+                        >
+                          <option value="not-started">Not Started</option>
+                          <option value="processing">⚙ Processing</option>
+                          <option value="hold">⏸ On Hold</option>
+                          <option value="done">✓ Done</option>
+                        </select>
+                      )}
                     </div>
                   </div>
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* Hold reason modal */}
+        {holdModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+            <div style={{ background: 'var(--surface)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: '16px' }}>⏸ Put On Hold</h3>
+              <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--text2)' }}>{holdModal.taskName}</p>
+              <p style={{ margin: '0 0 8px', fontSize: '12px', color: 'var(--text3)' }}>Why is this on hold? PM will be notified.</p>
+              <textarea
+                value={holdReasonInput}
+                onChange={e => setHoldReasonInput(e.target.value)}
+                placeholder="e.g. Waiting for client assets, brief is unclear…"
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', fontSize: '13px', minHeight: '80px', resize: 'vertical', boxSizing: 'border-box' }}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                <button
+                  onClick={() => { setHoldModal(null); setHoldReasonInput('') }}
+                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: '13px' }}
+                >Cancel</button>
+                <button
+                  disabled={!holdReasonInput.trim()}
+                  onClick={() => {
+                    updateTaskStatus(holdModal.taskId, 'hold', holdReasonInput.trim())
+                    setHoldModal(null)
+                    setHoldReasonInput('')
+                  }}
+                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: holdReasonInput.trim() ? '#ff9b4e' : '#ccc', color: '#fff', cursor: holdReasonInput.trim() ? 'pointer' : 'not-allowed', fontSize: '13px', fontWeight: 600 }}
+                >Confirm Hold</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
