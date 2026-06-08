@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Topbar from '@/components/Topbar'
-import { Task, CHECKLIST_ITEMS } from '@/lib/types'
+import { Task, getChecklistSections } from '@/lib/types'
 
 const DESIGNER_TABS = [
   { label: 'My Tasks',       href: '/designer/tasks',       icon: 'ti-list-check' },
@@ -53,6 +53,10 @@ function SubmitForm() {
     })
   }, [router, searchParams])
 
+  const submittableTasks = tasks.filter(t => {
+    const s = subStatusMap[t.id]
+    return !s || s === 'revision' || s === 'rejected'
+  })
   const selectedTask = tasks.find(t => t.id === selectedTaskId)
 
   function toggleCheck(item: string) {
@@ -122,6 +126,8 @@ function SubmitForm() {
           draftName:       uploadResult.draftName,
           draftNumber:     uploadResult.draftNumber,
           viewUrl:         uploadResult.viewUrl,
+          checklistJson:   JSON.stringify(checklist),
+          designerType:    user?.designerType || 'video',
         }),
       })
       if (!res.ok) {
@@ -151,23 +157,47 @@ function SubmitForm() {
     return (
       <>
         <Topbar userName={user.name} userRole="designer" designerType={user.designerType as 'video' | 'graphic'} activeTab="/designer/submit" tabs={DESIGNER_TABS} />
-        <div className="page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '36px', maxWidth: '440px', margin: '0 auto' }}>
-            <div style={{ fontSize: '40px', marginBottom: '12px' }}>✅</div>
-            <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#3B6D11' }}>Submitted!</div>
-            <div style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>
-              Draft {result.draftNumber} uploaded successfully. PM will review shortly.
-            </div>
-            <div className="drive-path">📁 {result.fileName}</div>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' }}>
-              {result.viewUrl && (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <a href={result.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm">View File ↗</a>
-                <a href={result.viewUrl} download={result.fileName} className="btn btn-sm">⬇ Download</a>
+        <div className="page">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="card" style={{ textAlign: 'center', padding: '36px' }}>
+              <div style={{ fontSize: '40px', marginBottom: '12px' }}>✅</div>
+              <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#3B6D11' }}>Submitted!</div>
+              <div style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>
+                Draft {result.draftNumber} uploaded. PM will review shortly.
               </div>
-            )}
-              <button className="btn btn-sm btn-primary" onClick={reset}>Submit Another</button>
-              <a href="/designer/tasks?refresh=1" className="btn btn-sm">My Tasks</a>
+              <div className="drive-path">📁 {result.fileName}</div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' }}>
+                {result.viewUrl && (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <a href={result.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm">View File ↗</a>
+                    <a href={result.viewUrl} download={result.fileName} className="btn btn-sm">⬇ Download</a>
+                  </div>
+                )}
+                <button className="btn btn-sm btn-primary" onClick={reset}>Submit Another</button>
+                <a href="/designer/tasks?refresh=1" className="btn btn-sm">My Tasks</a>
+              </div>
+            </div>
+            {/* Checklist summary — show as Done */}
+            <div className="card-sm" style={{ padding: '0' }}>
+              <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: '13px', borderBottom: '1px solid var(--border)', color: '#3B6D11' }}>
+                ✅ Checklist — Submitted
+              </div>
+              {getChecklistSections(user.designerType).map(section => (
+                <div key={section.section}>
+                  <div style={{ padding: '6px 14px 3px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--accent)', background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                    {section.section}
+                  </div>
+                  {section.items.map(item => (
+                    <div key={item} style={{ padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '13px', color: checklist.includes(item) ? '#4ede8c' : '#ccc' }}>
+                        {checklist.includes(item) ? '✓' : '○'}
+                      </span>
+                      <span style={{ fontSize: '12px', color: checklist.includes(item) ? 'var(--text)' : 'var(--text3)' }}>{item}</span>
+                      {checklist.includes(item) && <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 700, color: '#4ede8c', background: '#4ede8c15', padding: '1px 7px', borderRadius: '10px' }}>Done</span>}
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -187,7 +217,12 @@ function SubmitForm() {
               <label className="field-label">Task *</label>
               <select className="field-select" value={selectedTaskId} onChange={e => setSelectedTaskId(e.target.value)} disabled={submitting}>
                 <option value="">Select a task…</option>
-                {tasks.map(t => <option key={t.id} value={t.id}>{t.name} — {t.clientName}</option>)}
+                {submittableTasks.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {subStatusMap[t.id] === 'revision' ? '🔄 ' : subStatusMap[t.id] === 'rejected' ? '❌ ' : ''}
+                    {t.name} — {t.clientName}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -248,14 +283,24 @@ function SubmitForm() {
 
           <div>
             <div className="field">
-              <label className="field-label">Checklist <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400 }}>(optional)</span></label>
-              <div className="card-sm">
-                {CHECKLIST_ITEMS.map(item => (
-                  <div key={item} className="check-item" onClick={() => !submitting && toggleCheck(item)}>
-                    <div className={`checkbox ${checklist.includes(item) ? 'checked' : ''}`}>{checklist.includes(item) && '✓'}</div>
-                    {item}
+              <label className="field-label">Pre-Submission Checklist <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400 }}>(recommended)</span></label>
+              <div className="card-sm" style={{ padding: '0' }}>
+                {getChecklistSections(user?.designerType).map(section => (
+                  <div key={section.section}>
+                    <div style={{ padding: '8px 14px 4px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--accent)', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
+                      {section.section}
+                    </div>
+                    {section.items.map(item => (
+                      <div key={item} className="check-item" onClick={() => !submitting && toggleCheck(item)} style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}>
+                        <div className={`checkbox ${checklist.includes(item) ? 'checked' : ''}`} style={{ flexShrink: 0 }}>{checklist.includes(item) && '✓'}</div>
+                        <span style={{ fontSize: '12px', color: checklist.includes(item) ? 'var(--text2)' : 'var(--text)' }}>{item}</span>
+                      </div>
+                    ))}
                   </div>
                 ))}
+                <div style={{ padding: '8px 14px', fontSize: '11px', color: 'var(--text3)', textAlign: 'right' }}>
+                  {checklist.length} / {getChecklistSections(user?.designerType).flatMap(s => s.items).length} checked
+                </div>
               </div>
             </div>
 

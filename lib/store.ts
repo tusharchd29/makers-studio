@@ -142,6 +142,7 @@ export async function getSubmissions(): Promise<Submission[]> {
     designerNote: r.designer_note, pmComment: r.pm_comment,
     submittedAt: r.submitted_at, reviewedAt: r.reviewed_at || undefined,
     reviewedBy: r.reviewed_by || undefined,
+    checklistJson: r.checklist_json || '[]',
   }))
 }
 
@@ -158,6 +159,7 @@ export async function saveSubmission(sub: Submission) {
     submitted_at: sub.submittedAt,
     reviewed_at: sub.reviewedAt || '',
     reviewed_by: sub.reviewedBy || '',
+    checklist_json: (sub as Submission & { checklistJson?: string }).checklistJson || '[]',
   })
 }
 

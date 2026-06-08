@@ -509,6 +509,19 @@ export default function PMTasksPage() {
                           )}
                           <button className="btn btn-sm" onClick={() => openEdit(t)}>Edit</button>
                           <button className="btn btn-sm btn-danger" onClick={() => deleteTask(t.id)}>Delete</button>
+                          {/* PM can reopen any task back to processing */}
+                          {(isApproved || t.taskStatus === 'done') && (
+                            <button
+                              className="btn btn-sm"
+                              style={{ color: '#ff9b4e', borderColor: '#ff9b4e40' }}
+                              onClick={async () => {
+                                if (!confirm(`Reopen "${t.name}"? This will reset the task status to Processing.`)) return
+                                const res = await fetch('/api/tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id, reopen: true }) })
+                                const data = await res.json()
+                                if (data.ok) setTasks(prev => prev.map(x => x.id === t.id ? { ...x, taskStatus: 'processing' as never } : x))
+                              }}
+                            >↺ Reopen</button>
+                          )}
                         </div>
                       </div>
                     )

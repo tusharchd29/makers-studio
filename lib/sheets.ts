@@ -55,10 +55,11 @@ export const TABS = {
   clients:     { name: 'clients',     headers: ['id','name'] },
   tasks:       { name: 'tasks',       headers: ['id','client_id','client_name','name','deliverable_type','assigned_to','deadline','brief','created_at','created_by','sow_month','asana_gid','task_status','hold_reason','priority','pm_notes','pm_status','posting_id'] },
   sow:         { name: 'sow',         headers: ['client_id','service_type','total_creatives','priority','status','reels','stories','statics','videos','photos','carousels','youtube_shorts','approved_count'] },
-  submissions: { name: 'submissions', headers: ['id','task_id','task_name','client_name','designer_name','deliverable_type','file_type','file_name','storage_path','view_url','draft_number','status','designer_note','pm_comment','submitted_at','reviewed_at','reviewed_by'] },
+  submissions: { name: 'submissions', headers: ['id','task_id','task_name','client_name','designer_name','deliverable_type','file_type','file_name','storage_path','view_url','draft_number','status','designer_note','pm_comment','submitted_at','reviewed_at','reviewed_by','checklist_json'] },
   revisions:   { name: 'revisions',   headers: ['id','task_id','task_name','client_name','designer_name','draft_number','storage_path','view_url','designer_note','pm_comment','status','submitted_at','reviewed_at','reviewed_by'] },
   approved:    { name: 'approved',    headers: ['id','task_id','task_name','client_name','designer_name','sow_month','deliverable_type','storage_path','view_url','total_drafts','approved_at','approved_by'] },
   locks:       { name: 'locks',       headers: ['task_id','locked_at','locked_by'] },
+  audit_log:   { name: 'audit_log',   headers: ['timestamp','user','role','action','task_id','task_name','client_name','old_value','new_value','detail'] },
 }
 
 type TabName = keyof typeof TABS
@@ -240,6 +241,43 @@ export async function logActivity(
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: [[timestamp, user, action, entity, detail, pmComment, designerNote]] },
+    })
+  } catch { /* never block main flow */ }
+}
+
+// ── Permanent audit log (never rotates — full history forever) ────────────
+export async function logAudit(opts: {
+  user: string
+  role: string
+  action: string
+  taskId: string
+  taskName: string
+  clientName: string
+  oldValue?: string
+  newValue?: string
+  detail?: string
+}): Promise<void> {
+  try {
+    const sheets    = getSheetsClient()
+    await ensureTab(sheets, 'audit_log', TABS.audit_log.headers)
+    const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'audit_log!A1',
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: [[
+        timestamp,
+        opts.user,
+        opts.role,
+        opts.action,
+        opts.taskId,
+        opts.taskName,
+        opts.clientName,
+        opts.oldValue  || '',
+        opts.newValue  || '',
+        opts.detail    || '',
+      ]] },
     })
   } catch { /* never block main flow */ }
 }

@@ -100,7 +100,7 @@ export async function PUT(req: NextRequest) {
   return NextResponse.json({ ...body, asanaSynced })
 }
 
-// PATCH — designer updates task status OR pm updates pmStatus (ready-to-post / posted)
+// PATCH — designer updates task status OR pm updates pmStatus / reopens task
 export async function PATCH(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -110,13 +110,24 @@ export async function PATCH(req: NextRequest) {
   const task = tasks.find(t => t.id === body.id)
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Designer can update: taskStatus, holdReason
+  const { logAudit } = await import('@/lib/sheets')
+
+  // Designer: update taskStatus + holdReason
   if (user.role === 'designer') {
     if (task.assignedTo !== user.name) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const oldStatus = task.taskStatus || 'not-started'
     const updated = { ...task, taskStatus: body.taskStatus, holdReason: body.holdReason || '' }
     await saveTask(updated)
 
-    // Notify PM if going on hold
+    await logAudit({
+      user: user.name, role: 'designer',
+      action: 'Task Status Changed',
+      taskId: task.id, taskName: task.name, clientName: task.clientName,
+      oldValue: oldStatus,
+      newValue: body.taskStatus,
+      detail: body.taskStatus === 'hold' ? `Hold reason: ${body.holdReason}` : '',
+    })
+
     if (body.taskStatus === 'hold' && body.holdReason) {
       const { notifyPMOnHold } = await import('@/lib/notify')
       await notifyPMOnHold({
@@ -129,14 +140,40 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, task: updated })
   }
 
-  // PM can update: priority, pmNotes, pmStatus (ready-to-post / posted)
+  // PM: update priority, pmNotes, pmStatus, OR reopen task
   if (user.role === 'pm') {
     const updated = {
       ...task,
-      priority:   body.priority  !== undefined ? body.priority  : task.priority,
-      pmNotes:    body.pmNotes   !== undefined ? body.pmNotes   : task.pmNotes,
-      pmStatus:   body.pmStatus  !== undefined ? body.pmStatus  : task.pmStatus,
-      postingId:  task.postingId,
+      priority:  body.priority  !== undefined ? body.priority  : task.priority,
+      pmNotes:   body.pmNotes   !== undefined ? body.pmNotes   : task.pmNotes,
+      pmStatus:  body.pmStatus  !== undefined ? body.pmStatus  : task.pmStatus,
+      // PM can reopen: reset taskStatus back to processing
+      taskStatus: body.reopen ? 'processing' as const : task.taskStatus,
+      postingId: task.postingId,
+    }
+
+    // Log reopen
+    if (body.reopen) {
+      await logAudit({
+        user: user.name, role: 'pm',
+        action: 'Task Reopened',
+        taskId: task.id, taskName: task.name, clientName: task.clientName,
+        oldValue: task.taskStatus || 'done',
+        newValue: 'processing',
+        detail: `PM reopened task (was: ${task.taskStatus || 'done'})`,
+      })
+    }
+
+    // Log pmStatus change
+    if (body.pmStatus && body.pmStatus !== task.pmStatus) {
+      await logAudit({
+        user: user.name, role: 'pm',
+        action: 'PM Status Changed',
+        taskId: task.id, taskName: task.name, clientName: task.clientName,
+        oldValue: task.pmStatus || 'none',
+        newValue: body.pmStatus,
+        detail: body.pmStatus === 'ready-to-post' ? 'Queued for Postings app' : 'Marked as posted',
+      })
     }
 
     // Auto-create in Postings app when PM marks ready-to-post

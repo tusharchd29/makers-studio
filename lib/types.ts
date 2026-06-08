@@ -131,12 +131,68 @@ export const SOW_MONTHS = () => {
   return months
 }
 
-export const CHECKLIST_ITEMS = [
-  'Color corrected',
-  'Exported at correct resolution',
-  'Caption / text added',
-  'Client brief followed',
-  'Audio synced',
-  'Brand kit used correctly',
-  'Subtitles added',
+export const VIDEO_CHECKLIST: { section: string; items: string[] }[] = [
+  { section: 'Content & Copy', items: [
+    'No spelling mistakes in on-screen text or subtitles',
+    'Subtitles are timed correctly and fully legible',
+    'CTA is clearly visible at the end for 2–3 seconds',
+    'Instagram Reels must not exceed 40 seconds in duration',
+  ]},
+  { section: 'Audio & Sync', items: [
+    'Voiceover is clear and well-paced',
+    'Lip sync is accurate throughout',
+    'Music is balanced — doesn\'t drown out voiceover',
+    'No unwanted noise, echo, or audio gaps',
+  ]},
+  { section: 'Visuals & Motion', items: [
+    'First 3 seconds have a strong hook',
+    'Transitions and animations are smooth',
+    'No pixelated, blurry, or watermarked footage',
+    'No awkward cropping of faces or key elements',
+  ]},
+  { section: 'Brand & Export', items: [
+    'Logo is correctly placed and undistorted',
+    'Brand colors and fonts are used throughout',
+    'Exported in correct format, dimensions, and duration',
+    'Final file reviewed on actual screen before sending',
+  ]},
 ]
+
+export const GRAPHIC_CHECKLIST: { section: string; items: string[] }[] = [
+  { section: 'Copy & Message', items: [
+    'No spelling, grammar, or punctuation errors',
+    'Key message and CTA are clear and correctly worded',
+    'Disclaimer or legal text is legible (if applicable)',
+  ]},
+  { section: 'Visual & Layout', items: [
+    'Clean composition with proper visual hierarchy',
+    'All elements are aligned — nothing looks off or stray',
+    'Adequate whitespace, not cluttered',
+    'No blurry, pixelated, or low-res images',
+    'Minimal text on creative — avoid large blocks of copy',
+  ]},
+  { section: 'Brand', items: [
+    'Correct logo with clear space, no distortion',
+    'Brand colors and fonts used throughout',
+    'No off-brand visuals or competitor elements',
+  ]},
+  { section: 'Export & Specs', items: [
+    'Correct dimensions and aspect ratio as per brief',
+    'Safe zone respected — key content not near edges',
+    'Exported in correct format, resolution, and file size',
+    'All required variants/sizes delivered',
+  ]},
+]
+
+// Flat list of all items for a given designer type
+export function getChecklistItems(designerType?: string): string[] {
+  const sections = designerType === 'graphic' ? GRAPHIC_CHECKLIST : VIDEO_CHECKLIST
+  return sections.flatMap(s => s.items)
+}
+
+export function getChecklistSections(designerType?: string) {
+  return designerType === 'graphic' ? GRAPHIC_CHECKLIST : VIDEO_CHECKLIST
+}
+
+// Keep for backward compat
+export const CHECKLIST_ITEMS = VIDEO_CHECKLIST.flatMap(s => s.items)

@@ -10,7 +10,7 @@ import {
 } from '@/lib/store'
 import { deleteAllDraftsExcept, deleteFile } from '@/lib/drive'
 import { addAsanaComment, completeAsanaTask } from '@/lib/asana'
-import { logActivity, incrementSOWApprovedCount } from '@/lib/sheets'
+import { logActivity, logAudit, incrementSOWApprovedCount } from '@/lib/sheets'
 import { notifyPMNewSubmission, notifyDesignerReviewed } from '@/lib/notify'
 import { randomUUID } from 'crypto'
 
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     draftNumber, status: 'pending' as const,
     designerNote: designerNote || '', pmComment: '',
     submittedAt: now,
+    checklistJson: body.checklistJson || '[]',
   }
   await saveSubmission(submission)
 
@@ -67,6 +68,17 @@ export async function POST(req: NextRequest) {
     draftNumber, storagePath: fileId, viewUrl,
     designerNote: designerNote || '', pmComment: '',
     status: 'pending', submittedAt: now,
+  })
+
+  // Audit log
+  const checkedItems = JSON.parse(body.checklistJson || '[]') as string[]
+  const totalItems = body.designerType === 'graphic' ? 15 : 16
+  await logAudit({
+    user: user.name, role: 'designer',
+    action: 'Draft Submitted',
+    taskId, taskName, clientName,
+    newValue: `Draft #${draftNumber}`,
+    detail: `Checklist: ${checkedItems.length}/${totalItems} items checked. File: ${draftName}`,
   })
 
   // Log to Activity Log
@@ -114,6 +126,16 @@ export async function PUT(req: NextRequest) {
     pmComment || '',
     sub.designerNote || ''
   )
+
+  // Permanent audit log
+  await logAudit({
+    user: user.name, role: 'pm',
+    action: actionLabel,
+    taskId: sub.taskId, taskName: sub.taskName, clientName: sub.clientName,
+    oldValue: 'pending',
+    newValue: status,
+    detail: pmComment ? `PM comment: ${pmComment}` : `Draft #${sub.draftNumber}`,
+  })
 
   if (status === 'approved') {
     const tasks = await getTasks()

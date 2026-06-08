@@ -288,7 +288,7 @@ function DesignerTasksPageInner() {
 
         {/* Hold reason modal */}
         {holdModal && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(2px)' }}>
             <div style={{ background: 'var(--surface)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
               <h3 style={{ margin: '0 0 6px', fontSize: '16px' }}>⏸ Put On Hold</h3>
               <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--text2)' }}>{holdModal.taskName}</p>
