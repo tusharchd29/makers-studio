@@ -22,8 +22,17 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   const currentMonth = now.toLocaleString('en-US', { month: 'long', year: 'numeric' }) // e.g. "June 2026"
 
-  const progress: Record<string, { total: number; byType: Record<string, number> }> = {}
+  // Deduplicate approved by taskName+client — same logic as /api/approved GET
+  const seen = new Map<string, typeof approved[0]>()
   for (const f of approved) {
+    const key = (f.taskName || '') + '|' + (f.clientName || '')
+    const existing = seen.get(key)
+    if (!existing || Number(f.totalDrafts) >= Number(existing.totalDrafts)) seen.set(key, f)
+  }
+  const dedupedApproved = [...seen.values()]
+
+  const progress: Record<string, { total: number; byType: Record<string, number> }> = {}
+  for (const f of dedupedApproved) {
     if (f.sowMonth !== currentMonth) continue
     if (!progress[f.clientName]) progress[f.clientName] = { total: 0, byType: {} }
     progress[f.clientName].total++
