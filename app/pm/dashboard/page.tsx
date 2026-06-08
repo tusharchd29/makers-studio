@@ -41,9 +41,12 @@ export default function PMDashboard() {
     })
   }, [router])
 
-  const months = useMemo(() =>
-    [...new Set(submissions.map(s => new Date(s.submittedAt).toLocaleString('en-US', { month: 'long', year: 'numeric' })))]
-      .sort().reverse(), [submissions])
+  const months = useMemo(() => {
+    const fromSubs = [...new Set(submissions.map(s => new Date(s.submittedAt).toLocaleString('en-US', { month: 'long', year: 'numeric' })))]
+    const fromApproved = [...new Set(approvedFiles.map(f => f.sowMonth).filter(Boolean))]
+    const all = [...new Set([...fromSubs, ...fromApproved])].sort().reverse()
+    return all
+  }, [submissions, approvedFiles])
 
   const currentMonth = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
   const activeMonth  = selectedMonth
@@ -51,15 +54,19 @@ export default function PMDashboard() {
   const [approvedFiles, setApprovedFiles] = useState<{clientName: string; sowMonth: string; deliverableType: string}[]>([])
 
   useEffect(() => {
-    fetch('/api/approved').then(r => r.json()).then(d => { if (Array.isArray(d)) setApprovedFiles(d) })
-  }, [])
+    fetch('/api/approved')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setApprovedFiles(d) })
+      .catch(() => {/* ignore */})
+  }, [])  // fetch once — approvedFiles contains all months
 
   const monthSubs = useMemo(() =>
     submissions.filter(s => new Date(s.submittedAt).toLocaleString('en-US', { month: 'long', year: 'numeric' }) === activeMonth),
     [submissions, activeMonth])
 
   const pending  = monthSubs.filter(s => s.status === 'pending').length
-  const approved = monthSubs.filter(s => s.status === 'approved').length
+  const approvedFromFiles = approvedFiles.filter(f => f.sowMonth === activeMonth).length
+  const approved = approvedFromFiles > 0 ? approvedFromFiles : monthSubs.filter(s => s.status === 'approved').length
   const rejected = monthSubs.filter(s => s.status === 'rejected').length
   const revision = monthSubs.filter(s => s.status === 'revision').length
 
