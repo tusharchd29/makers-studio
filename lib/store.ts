@@ -2,11 +2,16 @@ import { readAll, appendRow, upsertRow, deleteRow, updateRow, ensureAllTabs, log
 import { Task, SOWEntry, Client, Submission, RevisionEntry, ApprovedFile, CLIENTS } from './types'
 import { SEEDED_SOW } from './seedSOW'
 
-let initialized = false
-async function init() {
-  if (initialized) return
-  initialized = true
+// ensureAllTabs is expensive (7 API calls) — only run on first write, not reads
+let tabsEnsured = false
+async function ensureTabs() {
+  if (tabsEnsured) return
+  tabsEnsured = true
   await ensureAllTabs()
+}
+// Lightweight init for reads — no tab-checking
+async function init(write = false) {
+  if (write) await ensureTabs()
 }
 
 // ── Clients ───────────────────────────────────────────────────────────────
@@ -25,13 +30,13 @@ export async function getClients(): Promise<Client[]> {
 }
 
 export async function saveClient(client: Client, by = 'PM') {
-  await init()
+  await init(true)
   await upsertRow('clients', 'id', client.id, { id: client.id, name: client.name })
   await logActivity(by, 'Client Saved', client.name, `id: ${client.id}`)
 }
 
 export async function deleteClient(id: string, by = 'PM') {
-  await init()
+  await init(true)
   await deleteRow('clients', 'id', id)
   await logActivity(by, 'Client Deleted', id, '')
 }
@@ -50,7 +55,7 @@ export async function getTasks(): Promise<Task[]> {
 }
 
 export async function saveTask(task: Task) {
-  await init()
+  await init(true)
   await upsertRow('tasks', 'id', task.id, {
     id: task.id, client_id: task.clientId, client_name: task.clientName,
     name: task.name, deliverable_type: task.deliverableType,
@@ -65,7 +70,7 @@ export async function saveTask(task: Task) {
 }
 
 export async function deleteTask(id: string, by = 'PM') {
-  await init()
+  await init(true)
   await deleteRow('tasks', 'id', id)
   await logActivity(by, 'Task Deleted', id, '')
 }
@@ -97,7 +102,7 @@ export async function getSOW(): Promise<SOWEntry[]> {
 }
 
 export async function saveSOWEntry(entry: SOWEntry, by = 'PM') {
-  await init()
+  await init(true)
   await upsertRow('sow', 'client_id', entry.clientId, {
     client_id: entry.clientId, service_type: entry.serviceType,
     total_creatives: entry.totalCreatives, priority: entry.priority,
@@ -127,7 +132,7 @@ export async function getSubmissions(): Promise<Submission[]> {
 }
 
 export async function saveSubmission(sub: Submission) {
-  await init()
+  await init(true)
   await upsertRow('submissions', 'task_id', sub.taskId, {
     id: sub.id, task_id: sub.taskId, task_name: sub.taskName,
     client_name: sub.clientName, designer_name: sub.designerName,
@@ -148,7 +153,7 @@ export async function getSubmissionByTaskId(taskId: string): Promise<Submission 
 }
 
 export async function updateSubmission(taskId: string, patch: Partial<Submission>) {
-  await init()
+  await init(true)
   const mapped: Record<string, unknown> = {}
   if (patch.status       !== undefined) mapped.status        = patch.status
   if (patch.pmComment    !== undefined) mapped.pm_comment    = patch.pmComment
@@ -180,7 +185,7 @@ export async function getRevisions(): Promise<RevisionEntry[]> {
 }
 
 export async function appendRevision(rev: RevisionEntry) {
-  await init()
+  await init(true)
   await appendRow('revisions', {
     id: rev.id, task_id: rev.taskId, task_name: rev.taskName,
     client_name: rev.clientName, designer_name: rev.designerName,
@@ -194,7 +199,7 @@ export async function appendRevision(rev: RevisionEntry) {
 }
 
 export async function updateRevision(taskId: string, draftNumber: number, patch: Partial<RevisionEntry>) {
-  await init()
+  await init(true)
   const rows = await readAll<Record<string, string>>('revisions')
   const row  = rows.find(r => r.task_id === taskId && Number(r.draft_number) === draftNumber)
   if (!row) return
@@ -226,7 +231,7 @@ export async function getApprovedFiles(): Promise<ApprovedFile[]> {
 }
 
 export async function saveApprovedFile(file: ApprovedFile, by = 'PM') {
-  await init()
+  await init(true)
   await upsertRow('approved', 'task_id', file.taskId, {
     id: file.id, task_id: file.taskId, task_name: file.taskName,
     client_name: file.clientName, designer_name: file.designerName,
