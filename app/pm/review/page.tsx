@@ -212,6 +212,8 @@ export default function PMReviewPage() {
   const [groupBy, setGroupBy]     = useState<'none' | 'client' | 'month'>('client')
   const router = useRouter()
 
+  const [toast, setToast] = useState<{msg: string; type: 'success'|'error'} | null>(null)
+
   const [revisions, setRevisions] = useState<Record<string, {draftNumber: number; viewUrl: string; fileName: string; pmComment: string; designerNote: string; status: string; submittedAt: string}[]>>({})
 
   useEffect(() => {
@@ -237,12 +239,21 @@ export default function PMReviewPage() {
   }, [router])
 
   async function handleReview(id: string, status: string, comment: string) {
-    await fetch('/api/submissions', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submissionId: id, status, pmComment: comment }),
-    })
-    setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status, pmComment: comment } : s))
+    try {
+      const res = await fetch('/api/submissions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: id, status, pmComment: comment }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status, pmComment: comment } : s))
+      const label = status === 'approved' ? '✓ Approved!' : status === 'revision' ? '↩ Revision requested' : '✕ Rejected'
+      setToast({ msg: label, type: 'success' })
+      setTimeout(() => setToast(null), 3000)
+    } catch {
+      setToast({ msg: 'Failed to save — please try again', type: 'error' })
+      setTimeout(() => setToast(null), 4000)
+    }
   }
 
   // Derive filter options from data
@@ -297,6 +308,17 @@ export default function PMReviewPage() {
   return (
     <>
       <Topbar userName={user.name} userRole="pm" activeTab="/pm/review" tabs={PM_TABS} />
+      {toast && (
+        <div style={{
+          position: 'fixed', top: '16px', right: '16px', zIndex: 9999,
+          padding: '10px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: 700,
+          background: toast.type === 'success' ? '#4ede8c' : '#ff5f5f',
+          color: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+          display: 'flex', alignItems: 'center', gap: '8px',
+        }}>
+          {toast.msg}
+        </div>
+      )}
       <div className="page">
 
         {/* Stats bar */}
