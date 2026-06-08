@@ -77,8 +77,8 @@ function SubmitForm() {
     setSubmitting(true); setError(''); setProgress(5); setUploadStep('Preparing upload…')
 
     try {
-      // Single step — send file to our server, which uploads to Drive via service account
-      setUploadStep('Uploading to Drive…')
+      // Single step — send file to our server, which uploads to DO Spaces
+      setUploadStep('Uploading to Spaces…')
 
       const formData = new FormData()
       formData.append('file', file)
@@ -157,11 +157,16 @@ function SubmitForm() {
             <div style={{ fontSize: '40px', marginBottom: '12px' }}>✅</div>
             <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#3B6D11' }}>Submitted!</div>
             <div style={{ fontSize: '13px', color: '#888', marginBottom: '16px' }}>
-              Draft {result.draftNumber} uploaded to Google Drive. PM will review shortly.
+              Draft {result.draftNumber} uploaded successfully. PM will review shortly.
             </div>
             <div className="drive-path">📁 {result.fileName}</div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px', flexWrap: 'wrap' }}>
-              {result.viewUrl && <a href={result.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm">View in Drive ↗</a>}
+              {result.viewUrl && (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <a href={result.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm">View File ↗</a>
+                <a href={result.viewUrl} download={result.fileName} className="btn btn-sm">⬇ Download</a>
+              </div>
+            )}
               <button className="btn btn-sm btn-primary" onClick={reset}>Submit Another</button>
               <a href="/designer/tasks" className="btn btn-sm">My Tasks</a>
             </div>
@@ -206,7 +211,7 @@ function SubmitForm() {
               <label className="field-label">
                 File *
                 <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400, marginLeft: '6px' }}>
-                  any size — uploads directly to Google Drive
+                  MP4, MOV, JPG, PNG, PDF · max 150MB
                 </span>
               </label>
               <div
@@ -257,7 +262,7 @@ function SubmitForm() {
 
             {selectedTask && file && (
               <div className="drive-path">
-                📁 Makers Studio / {selectedTask.clientName} / {selectedTask.name} / {selectedTask.name} - draft?.{file.name.split('.').pop()}
+                📁 makers-studio / {selectedTask.clientName} / {selectedTask.name} / {selectedTask.name} - draft?.{file.name.split('.').pop()}
               </div>
             )}
           </div>
@@ -281,7 +286,7 @@ function SubmitForm() {
             </div>
             {file && (
               <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>
-                {(file.size / 1024 / 1024).toFixed(1)} MB · uploading directly to Google Drive
+                {(file.size / 1024 / 1024).toFixed(1)} MB · uploading to DO Spaces
               </div>
             )}
           </div>
