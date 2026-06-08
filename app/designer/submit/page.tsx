@@ -131,7 +131,6 @@ function SubmitForm() {
       const data = await res.json()
       setProgress(100); setSubmitting(false)
       setResult({ draftNumber: data.draftNumber, viewUrl: data.viewUrl, fileName: data.fileName })
-      router.refresh()
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -168,7 +167,7 @@ function SubmitForm() {
               </div>
             )}
               <button className="btn btn-sm btn-primary" onClick={reset}>Submit Another</button>
-              <a href="/designer/tasks" className="btn btn-sm">My Tasks</a>
+              <a href="/designer/tasks?refresh=1" className="btn btn-sm">My Tasks</a>
             </div>
           </div>
         </div>
