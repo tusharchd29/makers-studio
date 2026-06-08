@@ -67,7 +67,7 @@ export default function PMTasksPage() {
   const [importForm, setImportForm] = useState<Record<string, { deliverableType: string; assignedTo: string; sowMonth: string; brief: string }>>({})
   // Asana tab filters
   const [asanaFilterClient, setAsanaFilterClient] = useState('')
-  const [asanaFilterDue, setAsanaFilterDue]       = useState<'all' | 'overdue' | 'this-week' | 'upcoming'>('all')
+  const [asanaFilterDue, setAsanaFilterDue]       = useState<'all' | 'overdue' | 'this-week' | 'upcoming' | 'no-date'>('all')
   const [asanaSearch, setAsanaSearch]             = useState('')
   const [search, setSearch] = useState('')
   const [filterClient, setFilterClient] = useState('')
@@ -413,14 +413,18 @@ export default function PMTasksPage() {
                             {sm.label}
                           </span>
                           {/* Asana sync status badge */}
-                          {t.asanaGid && (() => {
-                            const st = syncStatus[t.id]
-                            if (st === 'syncing') return <span style={{ fontSize: 10, color: '#888', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#FAC775', display: 'inline-block' }} />Syncing…</span>
-                            if (st === 'failed')  return <span title="Asana sync failed — edit and save to retry" style={{ fontSize: 10, color: '#ff5f5f', display: 'flex', alignItems: 'center', gap: 3, cursor: 'help' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff5f5f', display: 'inline-block' }} />Sync failed</span>
-                            if (st === 'synced')  return <span style={{ fontSize: 10, color: '#4ede8c', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ede8c', display: 'inline-block' }} />Synced</span>
-                            // Has asanaGid but no status yet = was synced on import, show linked
-                            return <span title={`Linked to Asana task ${t.asanaGid}`} style={{ fontSize: 10, color: '#29ABE2', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#29ABE2', display: 'inline-block' }} />Asana linked</span>
-                          })()}
+                          {t.asanaGid && syncStatus[t.id] === 'syncing' && (
+                            <span style={{ fontSize: 10, color: '#888', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#FAC775', display: 'inline-block' }} />Syncing…</span>
+                          )}
+                          {t.asanaGid && syncStatus[t.id] === 'failed' && (
+                            <span title="Asana sync failed — edit and save to retry" style={{ fontSize: 10, color: '#ff5f5f', display: 'flex', alignItems: 'center', gap: 3, cursor: 'help' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff5f5f', display: 'inline-block' }} />Sync failed</span>
+                          )}
+                          {t.asanaGid && syncStatus[t.id] === 'synced' && (
+                            <span style={{ fontSize: 10, color: '#4ede8c', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ede8c', display: 'inline-block' }} />Synced</span>
+                          )}
+                          {t.asanaGid && !syncStatus[t.id] && (
+                            <span title={`Linked to Asana task ${t.asanaGid}`} style={{ fontSize: 10, color: '#29ABE2', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#29ABE2', display: 'inline-block' }} />Asana linked</span>
+                          )}
                           <button className="btn btn-sm" onClick={() => openEdit(t)}>Edit</button>
                           <button className="btn btn-sm btn-danger" onClick={() => deleteTask(t.id)}>Delete</button>
                         </div>
@@ -465,7 +469,7 @@ export default function PMTasksPage() {
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
-                <select className="field-select" value={asanaFilterDue} onChange={e => setAsanaFilterDue(e.target.value as 'all'|'overdue'|'this-week'|'upcoming')} style={{ minWidth: 130 }}>
+                <select className="field-select" value={asanaFilterDue} onChange={e => setAsanaFilterDue(e.target.value as 'all'|'overdue'|'this-week'|'upcoming'|'no-date')} style={{ minWidth: 130 }}>
                   <option value="all">All dates</option>
                   <option value="overdue">Overdue</option>
                   <option value="this-week">This week</option>
@@ -476,35 +480,31 @@ export default function PMTasksPage() {
                   <button className="btn btn-sm" onClick={() => { setAsanaFilterClient(''); setAsanaFilterDue('all'); setAsanaSearch('') }}>Clear ✕</button>
                 )}
                 <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 'auto' }}>
-                  {(() => {
+                  {asanaTasks.filter(t => {
                     const today = new Date().toISOString().split('T')[0]
                     const weekEnd = new Date(Date.now() + 7*86400000).toISOString().split('T')[0]
-                    return asanaTasks.filter(t => {
-                      if (asanaFilterClient && t.projectName !== asanaFilterClient) return false
-                      if (asanaSearch && !t.name.toLowerCase().includes(asanaSearch.toLowerCase())) return false
-                      if (asanaFilterDue === 'overdue')   return t.due_on && t.due_on < today
-                      if (asanaFilterDue === 'this-week') return t.due_on && t.due_on >= today && t.due_on <= weekEnd
-                      if (asanaFilterDue === 'upcoming')  return t.due_on && t.due_on > weekEnd
-                      if (asanaFilterDue === 'no-date')   return !t.due_on
-                      return true
-                    }).length
-                  })()} tasks
+                    if (asanaFilterClient && t.projectName !== asanaFilterClient) return false
+                    if (asanaSearch && !t.name.toLowerCase().includes(asanaSearch.toLowerCase())) return false
+                    if (asanaFilterDue === 'overdue')   return t.due_on != null && t.due_on < today
+                    if (asanaFilterDue === 'this-week') return t.due_on != null && t.due_on >= today && t.due_on <= weekEnd
+                    if (asanaFilterDue === 'upcoming')  return t.due_on != null && t.due_on > weekEnd
+                    if (asanaFilterDue === 'no-date')   return !t.due_on
+                    return true
+                  }).length} tasks
                 </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {(() => {
+                {asanaTasks.filter(t => {
                   const today = new Date().toISOString().split('T')[0]
                   const weekEnd = new Date(Date.now() + 7*86400000).toISOString().split('T')[0]
-                  return asanaTasks.filter(t => {
-                    if (asanaFilterClient && t.projectName !== asanaFilterClient) return false
-                    if (asanaSearch && !t.name.toLowerCase().includes(asanaSearch.toLowerCase())) return false
-                    if (asanaFilterDue === 'overdue')   return t.due_on && t.due_on < today
-                    if (asanaFilterDue === 'this-week') return t.due_on && t.due_on >= today && t.due_on <= weekEnd
-                    if (asanaFilterDue === 'upcoming')  return t.due_on && t.due_on > weekEnd
-                    if (asanaFilterDue === 'no-date')   return !t.due_on
-                    return true
-                  })
-                })().map(t => {
+                  if (asanaFilterClient && t.projectName !== asanaFilterClient) return false
+                  if (asanaSearch && !t.name.toLowerCase().includes(asanaSearch.toLowerCase())) return false
+                  if (asanaFilterDue === 'overdue')   return t.due_on != null && t.due_on < today
+                  if (asanaFilterDue === 'this-week') return t.due_on != null && t.due_on >= today && t.due_on <= weekEnd
+                  if (asanaFilterDue === 'upcoming')  return t.due_on != null && t.due_on > weekEnd
+                  if (asanaFilterDue === 'no-date')   return !t.due_on
+                  return true
+                }).map(t => {
                   const form = importForm[t.gid] || { deliverableType: 'Reel', assignedTo: 'Anshu', sowMonth: '', brief: '' }
                   const isImporting = importing === t.gid
                   return (
@@ -514,12 +514,12 @@ export default function PMTasksPage() {
                           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{t.name}</div>
                           <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <span style={{ background: '#E6F1FB', color: '#185FA5', padding: '1px 7px', borderRadius: 20, fontWeight: 600 }}>{t.projectName}</span>
-                            {t.due_on && (() => {
+                            {t.due_on && ((): JSX.Element => {
                               const today = new Date().toISOString().split('T')[0]
-                              const diff = t.due_on ? Math.ceil((new Date(t.due_on).getTime() - Date.now()) / 86400000) : null
-                              if (t.due_on < today) return <span style={{ color: '#ff5f5f', fontWeight: 600 }}>⚠ Overdue ({Math.abs(diff!)}d)</span>
-                              if (diff !== null && diff === 0) return <span style={{ color: '#D97706', fontWeight: 600 }}>Due today</span>
-                              if (diff !== null && diff <= 3)  return <span style={{ color: '#D97706' }}>Due in {diff}d</span>
+                              const diff = Math.ceil((new Date(t.due_on).getTime() - Date.now()) / 86400000)
+                              if (t.due_on < today) return <span style={{ color: '#ff5f5f', fontWeight: 600 }}>⚠ Overdue ({Math.abs(diff)}d)</span>
+                              if (diff === 0) return <span style={{ color: '#D97706', fontWeight: 600 }}>Due today</span>
+                              if (diff <= 3)  return <span style={{ color: '#D97706' }}>Due in {diff}d</span>
                               return <span>Due {t.due_on}</span>
                             })()}
                           </div>
