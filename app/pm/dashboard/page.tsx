@@ -22,6 +22,7 @@ export default function PMDashboard() {
   const [sow, setSOW]                 = useState<SOWEntry[]>([])
   const [clients, setClients]         = useState<Client[]>([])
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }))
+  const [approvedFiles, setApprovedFiles] = useState<{clientName: string; sowMonth: string; deliverableType: string}[]>([])
   const router = useRouter()
 
   useEffect(() => {
@@ -50,8 +51,6 @@ export default function PMDashboard() {
 
   const currentMonth = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
   const activeMonth  = selectedMonth
-
-  const [approvedFiles, setApprovedFiles] = useState<{clientName: string; sowMonth: string; deliverableType: string}[]>([])
 
   useEffect(() => {
     fetch('/api/approved')
