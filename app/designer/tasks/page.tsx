@@ -56,8 +56,12 @@ function DesignerTasksPageInner() {
       if (Array.isArray(t)) setTasks(t.filter((task: Task) => task.assignedTo === userName))
       if (Array.isArray(s)) {
         const map: Record<string, { status: string; pmComment: string; submissionId: string }> = {}
-        s.forEach((sub: { taskId: string; status: string; pmComment: string; id: string }) => {
-          if (!map[sub.taskId]) map[sub.taskId] = { status: sub.status, pmComment: sub.pmComment, submissionId: sub.id }
+        // Keep latest submission per task (highest draftNumber)
+        s.forEach((sub: { taskId: string; status: string; pmComment: string; id: string; draftNumber: number }) => {
+          const existing = map[sub.taskId]
+          if (!existing || sub.draftNumber > (existing as {draftNumber?: number}).draftNumber) {
+            map[sub.taskId] = { status: sub.status, pmComment: sub.pmComment, submissionId: sub.id, draftNumber: sub.draftNumber } as never
+          }
         })
         setSubMap(map)
       }
@@ -188,7 +192,9 @@ function DesignerTasksPageInner() {
                       <div style={{ fontSize: '12px', color: 'var(--text2)', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <span style={{ fontWeight: 500, color: 'var(--text)' }}>{t.clientName}</span>
                         <span className="tag">{t.deliverableType}</span>
-                        <span style={{ color: deadlineColor(t.deadline), fontWeight: 500 }}>{deadlineLabel(t.deadline)}</span>
+                        <span style={{ color: status === 'approved' ? '#4ede8c' : deadlineColor(t.deadline), fontWeight: 500 }}>
+                          {status === 'approved' ? '✓ Approved' : deadlineLabel(t.deadline)}
+                        </span>
                       </div>
                       {t.brief && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>{t.brief}</div>}
                       {/* PM feedback inline */}
