@@ -345,7 +345,7 @@ export default function PMTasksPage() {
                 <label className="field-label">SOW Month</label>
                 <select className="field-select" value={form.sowMonth} onChange={e => setForm(f => ({ ...f, sowMonth: e.target.value }))}>
                   <option value="">Select month…</option>
-                  {SOW_MONTHS().map(m => <option key={m}>{m}</option>)}
+                  {SOW_MONTHS().map((m: string) => <option key={m}>{m}</option>)}
                 </select>
               </div>
               <div className="field">
@@ -536,7 +536,7 @@ export default function PMTasksPage() {
                             <select className="field-select" style={{ fontSize: 11, padding: '4px 8px', minWidth: 90 }}
                               value={form.deliverableType}
                               onChange={e => setImportForm(f => ({ ...f, [t.gid]: { ...form, deliverableType: e.target.value } }))}>
-                              {['Reel','Story','Static','Carousel','YouTube Short','Product Video','Photo'].map(d => <option key={d}>{d}</option>)}
+                              {['Reel','Story','Static','Carousel','YouTube Short','Product Video','Photo'].map((d: string) => <option key={d}>{d}</option>)}
                             </select>
                           </div>
                           <div>
@@ -553,7 +553,7 @@ export default function PMTasksPage() {
                               value={form.sowMonth}
                               onChange={e => setImportForm(f => ({ ...f, [t.gid]: { ...form, sowMonth: e.target.value } }))}>
                               <option value="">Select…</option>
-                              {SOW_MONTHS().map(m => <option key={m}>{m}</option>)}
+                              {SOW_MONTHS().map((m: string) => <option key={m}>{m}</option>)}
                             </select>
                           </div>
                           <button
