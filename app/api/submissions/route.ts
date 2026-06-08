@@ -9,6 +9,7 @@ import {
   getTasks, saveApprovedFile, getApprovedFiles,
 } from '@/lib/store'
 import { deleteAllDraftsExcept, deleteFile } from '@/lib/drive'
+import { addAsanaComment, completeAsanaTask } from '@/lib/asana'
 import { logActivity, incrementSOWApprovedCount } from '@/lib/sheets'
 import { notifyPMNewSubmission, notifyDesignerReviewed } from '@/lib/notify'
 import { randomUUID } from 'crypto'
@@ -137,6 +138,14 @@ export async function PUT(req: NextRequest) {
     const taskData = tasks.find(t => t.id === sub.taskId)
     if (taskData?.clientId && !alreadyApproved) await incrementSOWApprovedCount(taskData.clientId)
 
+    // Sync to Asana: add comment + mark complete
+    if (taskData?.asanaGid) {
+      addAsanaComment(taskData.asanaGid,
+        `✅ Approved in Makers Studio by ${user.name} — Draft #${sub.draftNumber}`
+      ).catch(() => {})
+      completeAsanaTask(taskData.asanaGid).catch(() => {})
+    }
+
     // Delete all draft files — keep only approved
     const allRevisions = await getRevisionsByTaskId(sub.taskId)
     const allFileIds = allRevisions.map(r => r.storagePath).filter(Boolean)
@@ -144,12 +153,29 @@ export async function PUT(req: NextRequest) {
   }
 
   if (status === 'rejected') {
+    // Sync to Asana: add rejection comment
+    const rejectedTask = (await getTasks()).find(t => t.id === sub.taskId)
+    if (rejectedTask?.asanaGid) {
+      addAsanaComment(rejectedTask.asanaGid,
+        `❌ Rejected in Makers Studio by ${user.name}${pmComment ? ': ' + pmComment : ''}`
+      ).catch(() => {})
+    }
     // Delete all draft files on rejection
     const allRevisions = await getRevisionsByTaskId(sub.taskId)
     const allFileIds = allRevisions.map(r => r.storagePath).filter(Boolean)
     for (const fid of allFileIds) {
       const { deleteFile } = await import('@/lib/drive')
       await deleteFile(fid)
+    }
+  }
+
+  // Sync revision request to Asana
+  if (status === 'revision') {
+    const revTask = (await getTasks()).find(t => t.id === sub.taskId)
+    if (revTask?.asanaGid) {
+      addAsanaComment(revTask.asanaGid,
+        `🔄 Revision requested by ${user.name} on Draft #${sub.draftNumber}${pmComment ? ': ' + pmComment : ''}`
+      ).catch(() => {})
     }
   }
 
