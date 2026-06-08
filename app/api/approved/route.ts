@@ -16,6 +16,18 @@ export async function GET(req: NextRequest) {
   const clientName = searchParams.get('client')
 
   let files = await getApprovedFiles()
+
+  // Deduplicate by taskId — keep the latest entry (highest totalDrafts = most recent approval)
+  const seen = new Map<string, typeof files[0]>()
+  for (const f of files) {
+    const key = f.taskId || f.taskName // fallback to taskName if taskId missing
+    const existing = seen.get(key)
+    if (!existing || Number(f.totalDrafts) >= Number(existing.totalDrafts)) {
+      seen.set(key, f)
+    }
+  }
+  files = [...seen.values()]
+
   if (month)      files = files.filter(f => f.sowMonth === month)
   if (clientName) files = files.filter(f => f.clientName === clientName)
   return NextResponse.json(files)
