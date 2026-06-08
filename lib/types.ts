@@ -9,7 +9,7 @@ export interface User {
 }
 
 export interface Client {
-  id: string; name: string; driveFolderId?: string
+  id: string; name: string
 }
 
 export interface SOWEntry {
