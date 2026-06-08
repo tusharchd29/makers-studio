@@ -206,7 +206,7 @@ export default function PMReviewPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
-  const [filterStatus, setFilterStatus]     = useState('pending')
+  const [filterStatus, setFilterStatus]     = useState('')
   const [filterClient, setFilterClient]     = useState('')
   const [filterDesigner, setFilterDesigner] = useState('')
   const [filterMonth, setFilterMonth]       = useState('')
@@ -323,19 +323,25 @@ export default function PMReviewPage() {
       <div className="page">
 
         {/* Stats bar */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
           {(['all', 'pending', 'approved', 'revision', 'rejected'] as const).map(st => {
             const m = st === 'all' ? { color: 'var(--text2)', bg: 'var(--surface2)' } : STATUS_META[st]
             const active = filterStatus === st || (st === 'all' && !filterStatus)
+            const count = counts[st === 'all' ? 'all' : st]
+            const highlight = st === 'pending' && count > 0
             return (
               <button key={st} onClick={() => setFilterStatus(st === 'all' ? '' : st)}
                 style={{
-                  padding: '6px 14px', borderRadius: '20px', border: `1px solid ${active ? m.color : 'var(--border)'}`,
-                  background: active ? (st === 'all' ? 'var(--surface2)' : m.bg) : 'transparent',
-                  color: active ? (st === 'all' ? 'var(--text)' : m.color) : 'var(--text3)',
-                  fontWeight: active ? 700 : 400, fontSize: '12px', cursor: 'pointer', transition: 'all .15s',
+                  padding: '6px 14px', borderRadius: '20px',
+                  border: `1px solid ${active ? m.color : highlight ? '#ff9b4e60' : 'var(--border)'}`,
+                  background: active ? (st === 'all' ? 'var(--surface2)' : m.bg) : highlight ? '#ff9b4e08' : 'transparent',
+                  color: active ? (st === 'all' ? 'var(--text)' : m.color) : highlight ? '#ff9b4e' : 'var(--text3)',
+                  fontWeight: active || highlight ? 700 : 400, fontSize: '12px', cursor: 'pointer', transition: 'all .15s',
+                  position: 'relative',
                 }}>
-                {st === 'all' ? 'All' : STATUS_META[st].label} ({counts[st === 'all' ? 'all' : st]})
+                {st === 'all' ? 'All' : STATUS_META[st].label}
+                <span style={{ marginLeft: '5px', padding: '1px 6px', borderRadius: '10px', fontSize: '11px',
+                  background: active ? 'rgba(255,255,255,0.25)' : 'var(--surface2)', fontWeight: 700 }}>{count}</span>
               </button>
             )
           })}
