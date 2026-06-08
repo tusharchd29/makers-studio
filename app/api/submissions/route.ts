@@ -6,7 +6,7 @@ import { verifySession } from '@/lib/auth'
 import {
   getSubmissions, saveSubmission, getSubmissionByTaskId, updateSubmission,
   appendRevision, updateRevision, getRevisionsByTaskId,
-  getTasks, saveApprovedFile,
+  getTasks, saveApprovedFile, getApprovedFiles,
 } from '@/lib/store'
 import { deleteAllDraftsExcept, deleteFile } from '@/lib/drive'
 import { logActivity, incrementSOWApprovedCount } from '@/lib/sheets'
@@ -117,8 +117,13 @@ export async function PUT(req: NextRequest) {
     const tasks = await getTasks()
     const task  = tasks.find(t => t.id === sub.taskId)
 
+    // Check if already approved — use task_id as stable key to prevent duplicate rows
+    const existingApproved = await getApprovedFiles()
+    const alreadyApproved = existingApproved.some(f => f.taskId === sub.taskId)
+
     await saveApprovedFile({
-      id: randomUUID(), taskId: sub.taskId,
+      id: sub.taskId, // Use taskId as stable ID so upsert always overwrites same row
+      taskId: sub.taskId,
       taskName: sub.taskName, clientName: sub.clientName,
       designerName: sub.designerName,
       sowMonth: task?.sowMonth || '',
@@ -128,9 +133,9 @@ export async function PUT(req: NextRequest) {
       approvedAt: now, approvedBy: user.name,
     })
 
-    // Auto-increment SOW approved count
+    // Only increment SOW count on FIRST approval — not on re-approval after revision
     const taskData = tasks.find(t => t.id === sub.taskId)
-    if (taskData?.clientId) await incrementSOWApprovedCount(taskData.clientId)
+    if (taskData?.clientId && !alreadyApproved) await incrementSOWApprovedCount(taskData.clientId)
 
     // Delete all draft files — keep only approved
     const allRevisions = await getRevisionsByTaskId(sub.taskId)
