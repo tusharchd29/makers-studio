@@ -25,6 +25,7 @@ export default function PMTasksPage() {
   const [user, setUser]       = useState<{ name: string; role: string } | null>(null)
   const [tasks, setTasks]     = useState<Task[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [approvedTaskIds, setApprovedTaskIds] = useState<Set<string>>(new Set())
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '' })
@@ -44,9 +45,14 @@ export default function PMTasksPage() {
     Promise.all([
       fetch('/api/tasks').then(r => r.json()),
       fetch('/api/clients').then(r => r.json()),
-    ]).then(([t, c]) => {
+      fetch('/api/submissions').then(r => r.json()),
+    ]).then(([t, c, subs]) => {
       if (Array.isArray(t)) setTasks(t)
       if (Array.isArray(c)) setClients(c)
+      if (Array.isArray(subs)) {
+        const ids = new Set<string>(subs.filter((s: {status: string; taskId: string}) => s.status === 'approved').map((s: {taskId: string}) => s.taskId))
+        setApprovedTaskIds(ids)
+      }
     })
   }, [router])
 
@@ -87,7 +93,7 @@ export default function PMTasksPage() {
   const filtered = useMemo(() => tasks.filter(t => {
     if (filterClient   && t.clientName   !== filterClient)   return false
     if (filterDesigner && t.assignedTo   !== filterDesigner) return false
-    if (filterDeadline === 'overdue'  && new Date(t.deadline) >= new Date()) return false
+    if (filterDeadline === 'overdue'  && (new Date(t.deadline) >= new Date() || approvedTaskIds.has(t.id))) return false
     if (filterDeadline === 'thisWeek') {
       const diff = (new Date(t.deadline).getTime() - Date.now()) / 86400000
       if (diff < 0 || diff > 7) return false
@@ -109,7 +115,7 @@ export default function PMTasksPage() {
     return map
   }, [filtered])
 
-  const overdueCount = tasks.filter(t => new Date(t.deadline) < new Date()).length
+  const overdueCount = tasks.filter(t => new Date(t.deadline) < new Date() && !approvedTaskIds.has(t.id)).length
 
   if (!user) return null
 
@@ -221,8 +227,9 @@ export default function PMTasksPage() {
                 <div style={{ fontWeight: 700, fontSize: '13px' }}>{client}</div>
                 <div style={{ fontSize: '11px', color: 'var(--text3)', padding: '2px 8px', background: 'var(--surface2)', borderRadius: '20px' }}>
                   {clientTasks.length} task{clientTasks.length > 1 ? 's' : ''}
-                  {clientTasks.filter(t => new Date(t.deadline) < new Date()).length > 0 &&
-                    <span style={{ color: 'var(--red)', marginLeft: '6px' }}>· {clientTasks.filter(t => new Date(t.deadline) < new Date()).length} overdue</span>}
+                  {clientTasks.filter(t => new Date(t.deadline) < new Date() && !approvedTaskIds.has(t.id)).length > 0 &&
+                    <span style={{ color: 'var(--red)', marginLeft: '6px' }}>· {clientTasks.filter(t => new Date(t.deadline) < new Date() && !approvedTaskIds.has(t.id)).length} overdue</span>}
+                    {clientTasks.filter(t => approvedTaskIds.has(t.id)).length > 0 && <span style={{ color: '#4ede8c', marginLeft: '6px' }}>· {clientTasks.filter(t => approvedTaskIds.has(t.id)).length} approved</span>}
                 </div>
                 <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
               </div>
@@ -235,13 +242,16 @@ export default function PMTasksPage() {
                         <span>→ <strong>{t.assignedTo}</strong></span>
                         <span className="tag">{t.deliverableType}</span>
                         <span style={{ color: deadlineColor(t.deadline), fontWeight: 500 }}>
-                          {new Date(t.deadline) < new Date() ? '⚠ ' : ''}
-                          Due {new Date(t.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {new Date(t.deadline) < new Date() && !approvedTaskIds.has(t.id) ? '⚠ ' : ''}
+                          Due {new Date(t.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{approvedTaskIds.has(t.id) ? ' ✅' : ''}
                         </span>
                       </div>
                       {t.brief && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>{t.brief}</div>}
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                      {approvedTaskIds.has(t.id) && (
+                        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: '#4ede8c20', color: '#4ede8c', fontWeight: 700 }}>✓ Approved</span>
+                      )}
                       <button className="btn btn-sm" onClick={() => openEdit(t)}>Edit</button>
                       <button className="btn btn-sm btn-danger" onClick={() => deleteTask(t.id)}>Delete</button>
                     </div>
