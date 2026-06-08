@@ -24,6 +24,7 @@ export interface Task {
   deliverableType: DeliverableType; assignedTo: string
   deadline: string; brief?: string; createdAt: string; createdBy: string
   sowMonth: string  // e.g. "June 2026" — which month this counts toward
+  asanaGid?: string  // Asana task GID — set when task is imported from Asana
 }
 
 // A single draft submission (gets overwritten on resubmit)
