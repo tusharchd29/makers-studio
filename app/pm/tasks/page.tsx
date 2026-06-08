@@ -69,6 +69,8 @@ export default function PMTasksPage() {
   // Asana tab filters
   const [reopenModal, setReopenModal] = useState<Task | null>(null)
   const [reopenAssignTo, setReopenAssignTo] = useState('')
+  const [asanaProjects, setAsanaProjects] = useState<{ gid: string; name: string }[]>([])
+  const [asanaProjectGid, setAsanaProjectGid] = useState('')
   const [asanaFilterClient, setAsanaFilterClient] = useState('')
   const [asanaFilterDue, setAsanaFilterDue]       = useState<'all' | 'overdue' | 'this-week' | 'upcoming' | 'no-date'>('all')
   const [asanaSearch, setAsanaSearch]             = useState('')
@@ -102,6 +104,10 @@ export default function PMTasksPage() {
     if (u.role !== 'pm') { router.push('/designer/tasks'); return }
     setUser(u)
     loadData()
+    // Load Asana projects for manual task creation
+    fetch('/api/asana-projects').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) setAsanaProjects(data)
+    }).catch(() => {})
   }, [router, loadData])
 
   const loadAsanaTasks = async () => {
@@ -161,11 +167,13 @@ export default function PMTasksPage() {
   function openNew() {
     setEditTask(null)
     setForm({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: 'none', pmNotes: '' })
+    setAsanaProjectGid('')
     setShowForm(true)
   }
   function openEdit(t: Task) {
     setEditTask(t)
     setForm({ clientId: t.clientId, name: t.name, deliverableType: t.deliverableType, assignedTo: t.assignedTo, deadline: t.deadline.split('T')[0], brief: t.brief || '', sowMonth: t.sowMonth || '', taskStatus: t.taskStatus || 'not-started', holdReason: t.holdReason || '', priority: t.priority || 'none', pmNotes: t.pmNotes || '' })
+    setAsanaProjectGid('')
     setShowForm(true)
   }
 
@@ -182,7 +190,7 @@ export default function PMTasksPage() {
     const res = await fetch('/api/tasks', {
       method: editTask ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, ...((!editTask && asanaProjectGid) ? { asanaProjectGid } : {}) }),
     })
     const saved = await res.json()
     // Update sync status based on response
@@ -386,10 +394,40 @@ export default function PMTasksPage() {
                 <label className="field-label">PM Notes (visible to designer)</label>
                 <textarea className="field-textarea" value={form.pmNotes} onChange={e => setForm(f => ({ ...f, pmNotes: e.target.value }))} placeholder="Internal notes, client expectations, references…" style={{ minHeight: '56px' }} />
               </div>
+
+              {/* Asana project picker — only on new task creation */}
+              {!editTask && (
+                <div className="field">
+                  <label className="field-label">
+                    Push to Asana
+                    <span style={{ color: '#aaa', fontWeight: 400, textTransform: 'none', marginLeft: '6px', fontSize: '11px' }}>(optional)</span>
+                  </label>
+                  {asanaProjects.length === 0 ? (
+                    <div style={{ fontSize: '12px', color: 'var(--text3)', padding: '8px 0' }}>Loading Asana projects…</div>
+                  ) : (
+                    <select
+                      className="field-select"
+                      value={asanaProjectGid}
+                      onChange={e => setAsanaProjectGid(e.target.value)}
+                    >
+                      <option value="">— Don't push to Asana</option>
+                      {asanaProjects.map(p => (
+                        <option key={p.gid} value={p.gid}>{p.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {asanaProjectGid && (
+                    <div style={{ fontSize: '11px', color: '#29ABE2', marginTop: '4px' }}>
+                      ✓ Task will be created in Asana and linked automatically
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                 <button className="btn" onClick={() => setShowForm(false)}>Cancel</button>
                 <button className="btn btn-primary" onClick={saveTask} disabled={saving || !form.clientId || !form.name || !form.deadline}>
-                  {saving ? 'Saving…' : editTask ? 'Save Changes' : 'Create Task'}
+                  {saving ? (asanaProjectGid ? 'Creating in Asana…' : 'Saving…') : editTask ? 'Save Changes' : 'Create Task'}
                 </button>
               </div>
             </div>

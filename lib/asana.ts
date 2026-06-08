@@ -48,6 +48,70 @@ export interface AsanaTask {
   assigneeName: string | null
 }
 
+// ── Fetch all active Asana projects (for PM to pick when creating manual task) ─
+export async function fetchAsanaProjects(): Promise<{ gid: string; name: string }[]> {
+  try {
+    const res = await fetch(
+      `${BASE}/workspaces/${WORKSPACE_GID}/projects?opt_fields=name,gid&limit=100&archived=false`,
+      { headers: asanaHeaders() }
+    )
+    const data = await res.json()
+    return (data.data || []).map((p: { gid: string; name: string }) => ({ gid: p.gid, name: p.name }))
+  } catch { return [] }
+}
+
+// ── Create a brand-new task in Asana (for manual tasks created in Makers Studio) ─
+export async function createAsanaTask(opts: {
+  name:            string
+  projectGid:      string
+  designerName:    string
+  deliverableType: string
+  sowMonth:        string
+  brief:           string
+  deadline:        string
+  clientName:      string
+  pmName:          string
+}): Promise<string | null> {  // returns new task GID or null on failure
+  try {
+    const gidMap      = await getDesignerGids()
+    const assigneeGid = gidMap[opts.designerName] || null
+
+    const notes = [
+      `Client: ${opts.clientName}`,
+      `Deliverable: ${opts.deliverableType}`,
+      `Assigned to: ${opts.designerName}`,
+      `SOW Month: ${opts.sowMonth}`,
+      opts.brief ? `Brief: ${opts.brief}` : null,
+      '',
+      `Created via Makers Studio by ${opts.pmName}`,
+    ].filter((l): l is string => l !== null).join('\n')
+
+    const body: Record<string, unknown> = {
+      name:      opts.name,
+      notes,
+      projects:  [opts.projectGid],
+      workspace: WORKSPACE_GID,
+    }
+    if (opts.deadline) body.due_on = opts.deadline
+    if (assigneeGid)   body.assignee = assigneeGid
+
+    const res = await fetch(`${BASE}/tasks`, {
+      method:  'POST',
+      headers: asanaHeaders(),
+      body:    JSON.stringify({ data: body }),
+    })
+    const data = await res.json()
+    const newGid = data.data?.gid || null
+
+    if (newGid) {
+      await addAsanaComment(newGid,
+        `📋 Created from Makers Studio by ${opts.pmName} — ${opts.deliverableType} for ${opts.clientName}`
+      )
+    }
+    return newGid
+  } catch { return null }
+}
+
 // ── Fetch all incomplete tasks across all Asana projects ─────────────────
 export async function fetchAsanaTasks(): Promise<AsanaTask[]> {
   const projRes = await fetch(

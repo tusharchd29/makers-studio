@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
 import { getTasks, saveTask, deleteTask } from '@/lib/store'
-import { syncImportToAsana, syncEditToAsana } from '@/lib/asana'
+import { syncImportToAsana, syncEditToAsana, createAsanaTask } from '@/lib/asana'
 import { randomUUID } from 'crypto'
 
 async function getUser(req: NextRequest) {
@@ -47,9 +47,11 @@ export async function POST(req: NextRequest) {
   // 1. Save to Makers Studio Sheet first — always succeeds independently
   await saveTask(task, true)
 
-  // 2. Await Asana sync (with timeout) — return asanaSynced flag so UI can show status
+  // 2. Asana sync
   let asanaSynced = false
+
   if (task.asanaGid) {
+    // Imported from Asana — sync back details
     try {
       await Promise.race([
         syncImportToAsana({
@@ -63,6 +65,32 @@ export async function POST(req: NextRequest) {
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
       ])
       asanaSynced = true
+    } catch { asanaSynced = false }
+
+  } else if (body.asanaProjectGid) {
+    // Manual task — create in Asana and store the returned GID
+    try {
+      const newGid = await Promise.race([
+        createAsanaTask({
+          name:            task.name,
+          projectGid:      body.asanaProjectGid,
+          designerName:    task.assignedTo,
+          deliverableType: task.deliverableType,
+          sowMonth:        task.sowMonth,
+          brief:           task.brief,
+          deadline:        task.deadline ? task.deadline.split('T')[0] : '',
+          clientName:      task.clientName,
+          pmName:          user.name,
+        }),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+      ]) as string | null
+
+      if (newGid) {
+        task.asanaGid = newGid
+        // Re-save with asanaGid now set
+        await saveTask(task)
+        asanaSynced = true
+      }
     } catch { asanaSynced = false }
   }
 
