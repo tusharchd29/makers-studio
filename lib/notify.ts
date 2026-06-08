@@ -12,7 +12,7 @@ function getTransporter() {
 }
 
 const PM_EMAILS = [
-  process.env.PM_EMAIL_1,
+  process.env.PM_EMAIL_1 || 'tusharchd29@gmail.com',
   process.env.PM_EMAIL_2,
 ].filter(Boolean) as string[]
 
