@@ -1,6 +1,6 @@
 'use client'
-import React from 'react'
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Topbar from '@/components/Topbar'
 import { Task, DELIVERABLE_TYPES, SOW_MONTHS } from '@/lib/types'
@@ -675,9 +675,8 @@ export default function PMTasksPage() {
         )}
       </div>
 
-{/* ── Reopen Modal ─────────────────────────────────────── */}
-        {reopenModal && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(2px)' }}>
+        {reopenModal && typeof document !== 'undefined' && createPortal(
+<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(2px)' }}>
             <div style={{ background: 'var(--surface)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '420px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
               <h3 style={{ margin: '0 0 4px', fontSize: '16px' }}>↺ Reopen Task</h3>
               <p style={{ margin: '0 0 20px', fontSize: '13px', color: 'var(--text2)' }}>
@@ -723,6 +722,8 @@ export default function PMTasksPage() {
                         ? { ...x, taskStatus: 'processing' as never, assignedTo: reopenAssignTo, pmStatus: undefined, postingId: undefined }
                         : x
                       ))
+                      // Clear submission status so "✓ Done" badge goes away
+                      setSubStatusMap(prev => { const n = {...prev}; delete n[reopenModal.id]; return n })
                     }
                     setReopenModal(null)
                     setReopenAssignTo('')
@@ -732,7 +733,8 @@ export default function PMTasksPage() {
               </div>
             </div>
           </div>
-        )}
+        
+        , document.body)}
     </>
   )
 }

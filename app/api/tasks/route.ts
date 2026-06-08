@@ -166,6 +166,12 @@ export async function PATCH(req: NextRequest) {
           ? `Reassigned: ${task.assignedTo} → ${body.assignedTo}`
           : `Kept assigned to ${task.assignedTo}`,
       })
+      // Reset submission status to allow designer to resubmit
+      const { updateSubmission, getSubmissionByTaskId } = await import('@/lib/store')
+      const existingSub = await getSubmissionByTaskId(task.id)
+      if (existingSub) {
+        await updateSubmission(task.id, { status: 'revision' as never, pmComment: 'Task reopened by PM — please resubmit.', reviewedAt: new Date().toISOString(), reviewedBy: user.name })
+      }
     }
 
     // Log pmStatus change
