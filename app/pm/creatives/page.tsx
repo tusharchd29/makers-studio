@@ -272,7 +272,7 @@ export default function PMCreativesPage() {
                           <button onClick={() => setPreviewUrl({ url: f.viewUrl, name: f.taskName, isVideo: vid })} className="btn btn-sm" style={{ fontSize: '11px' }}>
                             <i className={`ti ${vid ? 'ti-player-play' : 'ti-eye'}`} /> Preview
                           </button>
-                          <a href={f.viewUrl} download={f.taskName} className="btn btn-sm" style={{ fontSize: '11px' }}>⬇</a>
+                          <a href={`/api/download?url=${encodeURIComponent(f.viewUrl)}&name=${encodeURIComponent(f.taskName)}`} className="btn btn-sm" style={{ fontSize: '11px' }}>⬇</a>
                         </>
                       )}
                     </div>
@@ -323,7 +323,7 @@ export default function PMCreativesPage() {
                             <i className={`ti ${vid ? 'ti-player-play' : 'ti-eye'}`} /> Preview
                           </button>
                           <a href={f.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ fontSize: '11px' }}>Open ↗</a>
-                          <a href={f.viewUrl} download={f.taskName} className="btn btn-sm" style={{ fontSize: '11px' }}>⬇</a>
+                          <a href={`/api/download?url=${encodeURIComponent(f.viewUrl)}&name=${encodeURIComponent(f.taskName)}`} className="btn btn-sm" style={{ fontSize: '11px' }}>⬇</a>
                         </>
                       )}
                     </div>
@@ -378,7 +378,7 @@ export default function PMCreativesPage() {
                           >
                             <i className={`ti ${vid ? 'ti-player-play' : 'ti-eye'}`} /> Preview
                           </button>
-                          <a href={s.viewUrl} download={s.fileName} className="btn btn-sm" style={{ fontSize: '11px' }}>⬇</a>
+                          <a href={`/api/download?url=${encodeURIComponent(s.viewUrl)}&name=${encodeURIComponent(s.fileName)}`} className="btn btn-sm" style={{ fontSize: '11px' }}>⬇</a>
                         </>
                       )}
                     </div>

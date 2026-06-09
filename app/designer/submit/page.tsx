@@ -170,7 +170,7 @@ function SubmitForm() {
                 {result.viewUrl && (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <a href={result.viewUrl} target="_blank" rel="noreferrer" className="btn btn-sm">View File ↗</a>
-                    <a href={result.viewUrl} download={result.fileName} className="btn btn-sm">⬇ Download</a>
+                    <a href={`/api/download?url=${encodeURIComponent(result.viewUrl)}&name=${encodeURIComponent(result.fileName)}`} className="btn btn-sm">⬇ Download</a>
                   </div>
                 )}
                 <button className="btn btn-sm btn-primary" onClick={reset}>Submit Another</button>

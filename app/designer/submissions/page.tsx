@@ -242,7 +242,7 @@ export default function MySubmissionsPage() {
                         style={{ fontSize: '11px' }}>
                         View Approved File ↗
                       </a>
-                      <a href={s.viewUrl} download={s.fileName} className="btn btn-sm"
+                      <a href={`/api/download?url=${encodeURIComponent(s.viewUrl)}&name=${encodeURIComponent(s.fileName)}`} className="btn btn-sm"
                         style={{ fontSize: '11px' }}>
                         ⬇ Download
                       </a>

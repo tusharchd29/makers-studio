@@ -2,6 +2,8 @@
   "framework": "nextjs",
   "functions": {
     "app/api/upload-url/route.ts":   { "maxDuration": 120 },
+    "app/api/download/route.ts":     { "maxDuration": 60 },
+    "app/api/brief-image/route.ts":  { "maxDuration": 30 },
     "app/api/submissions/route.ts":  { "maxDuration": 60 },
     "app/api/tasks/route.ts":        { "maxDuration": 30 },
     "app/api/sow/route.ts":          { "maxDuration": 30 },

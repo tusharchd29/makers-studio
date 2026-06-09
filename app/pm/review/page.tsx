@@ -56,7 +56,7 @@ function FilePreview({ s }: { s: Submission }) {
             <span style={{ fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{s.fileName}</span>
             <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
               <a href={s.viewUrl} target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: 'var(--accent)', textDecoration: 'none' }}>Open ↗</a>
-              <a href={s.viewUrl} download={s.fileName} style={{ fontSize: '11px', color: 'var(--text2)', textDecoration: 'none' }}>⬇ Download</a>
+              <a href={`/api/download?url=${encodeURIComponent(s.viewUrl)}&name=${encodeURIComponent(s.fileName)}`} style={{ fontSize: "11px", color: "var(--text2)", textDecoration: "none" }}>⬇ Download</a>
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '16px', lineHeight: 1, padding: 0 }}>×</button>
             </div>
           </div>

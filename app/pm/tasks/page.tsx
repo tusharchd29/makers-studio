@@ -593,8 +593,8 @@ export default function PMTasksPage() {
                           {t.asanaGid && !syncStatus[t.id] && (
                             <span title={`Linked to Asana task ${t.asanaGid}`} style={{ fontSize: 10, color: '#29ABE2', display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#29ABE2', display: 'inline-block' }} />Asana linked</span>
                           )}
-                          {/* PM Status: Ready to Post / Posted — only show after task is done */}
-                          {(t.taskStatus === 'done' || t.pmStatus) && (
+                          {/* PM Status: Ready to Post / Posted — show when submission approved OR task is done */}
+                          {(isApproved || t.taskStatus === 'done' || t.pmStatus) && (
                             <select
                               value={t.pmStatus || ''}
                               onChange={async e => {
@@ -605,9 +605,9 @@ export default function PMTasksPage() {
                                   setTasks(prev => prev.map(x => x.id === t.id ? { ...x, pmStatus: val as never, postingId: data.task?.postingId } : x))
                                 }
                               }}
-                              style={{ fontSize: '11px', padding: '3px 7px', borderRadius: '6px', border: '1px solid #a855f740', background: t.pmStatus === 'posted' ? '#22c55e18' : t.pmStatus === 'ready-to-post' ? '#a855f718' : 'var(--surface)', color: t.pmStatus === 'posted' ? '#22c55e' : t.pmStatus === 'ready-to-post' ? '#a855f7' : 'var(--text2)', cursor: 'pointer', fontWeight: t.pmStatus ? 700 : 400 }}
+                              style={{ fontSize: '11px', padding: '3px 7px', borderRadius: '6px', border: `1px solid ${t.pmStatus === 'posted' ? '#22c55e40' : t.pmStatus === 'ready-to-post' ? '#a855f740' : isApproved ? '#4ede8c40' : '#a855f740'}`, background: t.pmStatus === 'posted' ? '#22c55e18' : t.pmStatus === 'ready-to-post' ? '#a855f718' : 'var(--surface)', color: t.pmStatus === 'posted' ? '#22c55e' : t.pmStatus === 'ready-to-post' ? '#a855f7' : 'var(--text2)', cursor: 'pointer', fontWeight: t.pmStatus ? 700 : 400 }}
                             >
-                              <option value="">— PM Status</option>
+                              <option value="">— Mark as…</option>
                               <option value="ready-to-post">🟣 Ready to Post</option>
                               <option value="posted">✅ Posted</option>
                             </select>

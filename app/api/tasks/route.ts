@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
-import { getTasks, saveTask, deleteTask } from '@/lib/store'
+import { getTasks, saveTask, deleteTask, getApprovedFiles } from '@/lib/store'
 import { syncImportToAsana, syncEditToAsana, createAsanaTask } from '@/lib/asana'
 import { randomUUID } from 'crypto'
 
@@ -237,6 +237,11 @@ export async function PATCH(req: NextRequest) {
     // Auto-create in Postings app when PM marks ready-to-post
     if (body.pmStatus === 'ready-to-post' && !task.postingId) {
       try {
+        // Look up the approved file to get the asset URL
+        const approvedFiles = await getApprovedFiles()
+        const approvedFile  = approvedFiles.find(f => f.taskId === task.id)
+        const assetUrl      = approvedFile?.viewUrl || ''
+
         const postingsUrl = process.env.POSTINGS_APP_URL || 'https://postings-topaz.vercel.app'
         const res = await fetch(`${postingsUrl}/api/posts`, {
           method: 'POST',
@@ -248,8 +253,8 @@ export async function PATCH(req: NextRequest) {
             time:      '',
             title:     task.name,
             caption:   task.brief || '',
-            asset:     '',
-            remarks:   `Auto-created from Makers Studio. Assigned: ${task.assignedTo}. SOW Month: ${task.sowMonth}`,
+            asset:     assetUrl,
+            remarks:   `Auto-created from Makers Studio. Designer: ${task.assignedTo}. SOW: ${task.sowMonth}${assetUrl ? '' : ' — NOTE: no approved file linked yet'}`,
             platforms: ['Instagram'],
           }),
         })
