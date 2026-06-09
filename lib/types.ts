@@ -31,7 +31,7 @@ export type TaskStatus = DesignerStatus
 export interface Task {
   id: string; clientId: string; clientName: string; name: string
   deliverableType: DeliverableType; assignedTo: string
-  deadline: string; brief?: string; createdAt: string; createdBy: string
+  deadline: string; brief?: string; briefImageUrl?: string; createdAt: string; createdBy: string
   sowMonth: string
   asanaGid?: string
   // Designer-controlled

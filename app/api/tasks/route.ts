@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     assignedTo:      body.assignedTo,
     deadline:        body.deadline,
     brief:           body.brief || '',
+    briefImageUrl:   body.briefImageUrl || '',
     createdAt:       new Date().toISOString(),
     createdBy:       user.name,
     sowMonth:        body.sowMonth || '',

@@ -1,6 +1,12 @@
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
+// Allow up to 200 MB request bodies for large video uploads
+export const config = {
+  api: { bodyParser: { sizeLimit: '200mb' }, responseLimit: false },
+}
+// Next.js 15 App Router body size limit
+export const bodyParser = false
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'

@@ -113,6 +113,7 @@ function DesignerTasksPageInner() {
   }), [tasks, subMap])
 
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+  const [expandedBrief, setExpandedBrief] = useState<Set<string>>(new Set())
   const [holdModal, setHoldModal] = useState<{ taskId: string; taskName: string } | null>(null)
   const [holdReasonInput, setHoldReasonInput] = useState('')
 
@@ -235,7 +236,40 @@ function DesignerTasksPageInner() {
                           {t.pmNotes}
                         </div>
                       )}
-                      {t.brief && !t.pmNotes && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>{t.brief}</div>}
+                      {t.brief && (
+                        <div style={{ marginTop: '6px' }}>
+                          {(() => {
+                            const isLong = t.brief.length > 120
+                            const isExp  = expandedBrief.has(t.id)
+                            const shown  = isLong && !isExp ? t.brief.slice(0, 120) + '…' : t.brief
+                            return (
+                              <div
+                                style={{ fontSize: '12px', color: 'var(--text2)', padding: '6px 10px', background: '#7DC24210', border: '1px solid #7DC24230', borderRadius: '6px', cursor: isLong ? 'pointer' : 'default' }}
+                                onClick={() => isLong && setExpandedBrief(s => { const n = new Set(s); isExp ? n.delete(t.id) : n.add(t.id); return n })}
+                                title={isLong ? (isExp ? 'Click to collapse' : 'Click to expand') : undefined}
+                              >
+                                <span style={{ fontWeight: 700, color: '#7DC242', fontSize: '10px', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                                  Brief {isLong && <span style={{ opacity: 0.7 }}>{isExp ? '▲ Collapse' : '▼ Expand'}</span>}
+                                </span>
+                                <span style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>{shown}</span>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      )}
+                      {t.briefImageUrl && (
+                        <div style={{ marginTop: '6px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#7DC242', textTransform: 'uppercase', marginBottom: '4px' }}>Reference Image</div>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={t.briefImageUrl}
+                            alt="Brief reference"
+                            style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', border: '1px solid var(--border)', objectFit: 'contain', cursor: 'pointer', display: 'block' }}
+                            onClick={() => window.open(t.briefImageUrl, '_blank')}
+                            title="Click to open full size"
+                          />
+                        </div>
+                      )}
                       {/* PM feedback inline */}
                       {sub?.pmComment && needsWork && (
                         <div style={{ marginTop: '8px', padding: '8px 10px', background: '#5b9cf618', border: '1px solid #5b9cf640', borderRadius: '6px', fontSize: '12px' }}>

@@ -59,6 +59,10 @@ export default function PMTasksPage() {
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [form, setForm] = useState({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: 'none', pmNotes: '' })
   const [saving, setSaving] = useState(false)
+  const [briefImageFile, setBriefImageFile] = useState<File | null>(null)
+  const [briefImageUrl, setBriefImageUrl] = useState('')
+  const [briefImageUploading, setBriefImageUploading] = useState(false)
+  const [briefImagePreview, setBriefImagePreview] = useState('')
   const [activeTab, setActiveTab] = useState<'studio' | 'asana'>('studio')
   const [syncStatus, setSyncStatus] = useState<Record<string, 'syncing' | 'synced' | 'failed'>>({})
   const [asanaTasks, setAsanaTasks] = useState<AsanaTask[]>([])
@@ -168,12 +172,16 @@ export default function PMTasksPage() {
     setEditTask(null)
     setForm({ clientId: '', name: '', deliverableType: 'Reel', assignedTo: 'Anshu', deadline: '', brief: '', sowMonth: '', taskStatus: 'not-started', holdReason: '', priority: 'none', pmNotes: '' })
     setAsanaProjectGid('')
+    setBriefImageFile(null); setBriefImageUrl(''); setBriefImagePreview('')
     setShowForm(true)
   }
   function openEdit(t: Task) {
     setEditTask(t)
     setForm({ clientId: t.clientId, name: t.name, deliverableType: t.deliverableType, assignedTo: t.assignedTo, deadline: t.deadline.split('T')[0], brief: t.brief || '', sowMonth: t.sowMonth || '', taskStatus: t.taskStatus || 'not-started', holdReason: t.holdReason || '', priority: t.priority || 'none', pmNotes: t.pmNotes || '' })
     setAsanaProjectGid('')
+    setBriefImageFile(null)
+    setBriefImageUrl(t.briefImageUrl || '')
+    setBriefImagePreview(t.briefImageUrl || '')
     setShowForm(true)
   }
 
@@ -181,9 +189,24 @@ export default function PMTasksPage() {
     if (!form.clientId || !form.name || !form.deadline) return
     setSaving(true)
     const client = clients.find(c => c.id === form.clientId)!
+
+    // Upload brief image if a new one was selected
+    let finalBriefImageUrl = briefImageUrl
+    if (briefImageFile) {
+      setBriefImageUploading(true)
+      try {
+        const fd = new FormData()
+        fd.append('file', briefImageFile)
+        const imgRes = await fetch('/api/brief-image', { method: 'POST', body: fd })
+        const imgData = await imgRes.json()
+        if (imgData.imageUrl) finalBriefImageUrl = imgData.imageUrl
+      } catch { /* ignore — save without image */ }
+      setBriefImageUploading(false)
+    }
+
     const body = editTask
-      ? { ...editTask, ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
-      : { ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'] }
+      ? { ...editTask, ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'], briefImageUrl: finalBriefImageUrl }
+      : { ...form, clientName: client.name, deliverableType: form.deliverableType as Task['deliverableType'], briefImageUrl: finalBriefImageUrl }
     // Mark syncing if this task has an asanaGid
     const bodyAsTask = body as Task
     if (bodyAsTask.asanaGid) setSyncStatus(s => ({ ...s, [bodyAsTask.id || '']: 'syncing' }))
@@ -364,6 +387,53 @@ export default function PMTasksPage() {
                 <label className="field-label">Brief for designer</label>
                 <textarea className="field-textarea" value={form.brief} onChange={e => setForm(f => ({ ...f, brief: e.target.value }))} placeholder="Specific instructions, references, tone…" />
               </div>
+              {/* Brief Image Attachment */}
+              <div className="field">
+                <label className="field-label">
+                  Brief Image
+                  <span style={{ color: '#aaa', fontWeight: 400, textTransform: 'none', marginLeft: '6px', fontSize: '11px' }}>(optional — reference/mood board for designer)</span>
+                </label>
+                {briefImagePreview ? (
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={briefImagePreview}
+                      alt="Brief reference"
+                      style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '8px', border: '1px solid var(--border)', objectFit: 'contain', display: 'block' }}
+                    />
+                    <button
+                      onClick={() => { setBriefImageFile(null); setBriefImageUrl(''); setBriefImagePreview('') }}
+                      style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(0,0,0,0.65)', color: '#fff', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', fontSize: '13px', lineHeight: '22px', textAlign: 'center', padding: 0 }}
+                      title="Remove image"
+                    >×</button>
+                  </div>
+                ) : (
+                  <label
+                    style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', border: '1.5px dashed var(--border)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text3)', background: 'var(--surface2)', transition: 'border-color .15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#7DC242')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                  >
+                    <i className="ti ti-photo-up" style={{ fontSize: '18px', color: '#C0DD97' }} />
+                    <span>Click to attach a reference image (JPG, PNG, WebP · max 10MB)</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        if (!f) return
+                        setBriefImageFile(f)
+                        const reader = new FileReader()
+                        reader.onload = ev => setBriefImagePreview(ev.target?.result as string)
+                        reader.readAsDataURL(f)
+                      }}
+                    />
+                  </label>
+                )}
+                {briefImageUploading && (
+                  <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>Uploading image…</div>
+                )}
+              </div>
               <div className="row">
                 <div className="col field">
                   <label className="field-label">Task Status</label>
@@ -427,7 +497,7 @@ export default function PMTasksPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                 <button className="btn" onClick={() => setShowForm(false)}>Cancel</button>
                 <button className="btn btn-primary" onClick={saveTask} disabled={saving || !form.clientId || !form.name || !form.deadline}>
-                  {saving ? (asanaProjectGid ? 'Creating in Asana…' : 'Saving…') : editTask ? 'Save Changes' : 'Create Task'}
+                  {saving ? (briefImageUploading ? 'Uploading image…' : asanaProjectGid ? 'Creating in Asana…' : 'Saving…') : editTask ? 'Save Changes' : 'Create Task'}
                 </button>
               </div>
             </div>

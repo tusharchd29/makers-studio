@@ -237,7 +237,20 @@ function SubmitForm() {
                   <span className="tag">{selectedTask.deliverableType}</span>
                   <span className="tag">Due {new Date(selectedTask.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                 </div>
-                {selectedTask.brief && <div style={{ fontSize: '12px', color: '#888' }}>{selectedTask.brief}</div>}
+                {selectedTask.brief && <div style={{ fontSize: '12px', color: '#888', marginBottom: selectedTask.briefImageUrl ? '8px' : '0' }}>{selectedTask.brief}</div>}
+                {selectedTask.briefImageUrl && (
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#7DC242', textTransform: 'uppercase', marginBottom: '4px' }}>Reference Image</div>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selectedTask.briefImageUrl}
+                      alt="Brief reference"
+                      style={{ maxWidth: '100%', maxHeight: '160px', borderRadius: '6px', border: '1px solid var(--border)', objectFit: 'contain', cursor: 'pointer', display: 'block' }}
+                      onClick={() => window.open(selectedTask.briefImageUrl, '_blank')}
+                      title="Click to open full size"
+                    />
+                  </div>
+                )}
               </div>
             )}
 
@@ -245,7 +258,7 @@ function SubmitForm() {
               <label className="field-label">
                 File *
                 <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400, marginLeft: '6px' }}>
-                  MP4, MOV, JPG, PNG, PDF · max 150MB
+                  MP4, MOV, JPG, PNG, PDF · max 200MB
                 </span>
               </label>
               <div
@@ -269,7 +282,7 @@ function SubmitForm() {
                   <div>
                     <i className="ti ti-cloud-upload" style={{ fontSize: '28px', display: 'block', marginBottom: '8px', color: '#C0DD97' }} />
                     <div style={{ color: '#888', marginBottom: '4px', fontSize: '13px' }}>Drag & drop or click to upload</div>
-                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG · no size limit</div>
+                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG · max 200MB</div>
                   </div>
                 )}
               </div>
