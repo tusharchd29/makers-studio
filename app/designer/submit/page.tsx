@@ -102,7 +102,7 @@ function SubmitForm() {
       const { presignedUrl, fileKey, draftName, draftNumber, viewUrl } =
         await metaRes.json() as { presignedUrl: string; fileKey: string; draftName: string; draftNumber: number; viewUrl: string }
 
-      // Step 2 — PUT directly to DO Spaces (browser → Spaces, bypasses Vercel entirely)
+      // Step 2 — stream file through /api/upload-proxy → DO Spaces (no CORS, no size limit)
       setUploadStep('Uploading to Spaces…')
       const uploadResult = await new Promise<{ fileId: string; draftName: string; draftNumber: number; viewUrl: string }>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
@@ -111,17 +111,19 @@ function SubmitForm() {
           if (e.lengthComputable) setProgress(10 + Math.round((e.loaded / e.total) * 80))
         }
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve({ fileId: fileKey, draftName, draftNumber, viewUrl })
-          } else {
-            reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 300)}`))
+          try {
+            const data = JSON.parse(xhr.responseText)
+            if (xhr.status >= 200 && xhr.status < 300) resolve({ fileId: fileKey, draftName, draftNumber, viewUrl })
+            else reject(new Error(data.error || `Upload failed (${xhr.status})`))
+          } catch {
+            reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`))
           }
         }
-        xhr.onerror = () => reject(new Error('Network error during upload to Spaces'))
+        xhr.onerror = () => reject(new Error('Network error — check your connection'))
         xhr.onabort = () => reject(new Error('Upload cancelled'))
-        xhr.open('PUT', presignedUrl)
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
-        xhr.setRequestHeader('x-amz-acl', 'public-read')
+        xhr.open('PUT', '/api/upload-proxy')
+        xhr.setRequestHeader('x-presigned-url', presignedUrl)
+        xhr.setRequestHeader('x-content-type', file.type || 'application/octet-stream')
         xhr.send(file)
       })
 
