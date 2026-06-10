@@ -1,7 +1,7 @@
 // ── Digital Ocean Spaces — File Storage ───────────────────────────────────
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
-const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024 // 200MB
+const MAX_FILE_SIZE_BYTES = 600 * 1024 * 1024 // 600MB
 const ALLOWED_EXTENSIONS  = ['.mp4', '.mov', '.avi', '.webm', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf']
 const ALLOWED_MIME_TYPES  = [
   'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm',
@@ -49,7 +49,7 @@ export function validateFile(fileName: string, mimeType: string, sizeBytes: numb
     return { valid: false, error: 'File type not allowed. Accepted: MP4, MOV, JPG, PNG, PDF' }
   }
   if (sizeBytes > MAX_FILE_SIZE_BYTES) {
-    return { valid: false, error: 'File too large. Maximum size is 200MB' }
+    return { valid: false, error: 'File too large. Maximum size is 600MB' }
   }
   return { valid: true }
 }
