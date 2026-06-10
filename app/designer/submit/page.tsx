@@ -258,7 +258,7 @@ function SubmitForm() {
               <label className="field-label">
                 File *
                 <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400, marginLeft: '6px' }}>
-                  MP4, MOV, JPG, PNG, PDF · max 200MB
+                  MP4, MOV, JPG, PNG, PDF · max 600MB
                 </span>
               </label>
               <div
@@ -282,7 +282,7 @@ function SubmitForm() {
                   <div>
                     <i className="ti ti-cloud-upload" style={{ fontSize: '28px', display: 'block', marginBottom: '8px', color: '#C0DD97' }} />
                     <div style={{ color: '#888', marginBottom: '4px', fontSize: '13px' }}>Drag & drop or click to upload</div>
-                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG · max 200MB</div>
+                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG · max 600MB</div>
                   </div>
                 )}
               </div>
