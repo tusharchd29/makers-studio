@@ -81,16 +81,29 @@ function SubmitForm() {
     setSubmitting(true); setError(''); setProgress(5); setUploadStep('Preparing upload…')
 
     try {
-      // Single step — send file to our server, which uploads to DO Spaces
+      // Step 1 — get a presigned PUT URL from our server (tiny JSON, no file bytes)
+      setUploadStep('Preparing upload…')
+      const metaRes = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName:   file.name,
+          fileType:   file.type || 'application/octet-stream',
+          fileSize:   file.size,
+          taskId:     selectedTask.id,
+          taskName:   selectedTask.name,
+          clientName: selectedTask.clientName,
+        }),
+      })
+      if (!metaRes.ok) {
+        const d = await metaRes.json()
+        throw new Error(d.error || `Failed to get upload URL (${metaRes.status})`)
+      }
+      const { presignedUrl, fileKey, draftName, draftNumber, viewUrl } =
+        await metaRes.json() as { presignedUrl: string; fileKey: string; draftName: string; draftNumber: number; viewUrl: string }
+
+      // Step 2 — upload file directly to DO Spaces using presigned URL (bypasses Vercel entirely)
       setUploadStep('Uploading to Spaces…')
-
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('taskId', selectedTask.id)
-      formData.append('taskName', selectedTask.name)
-      formData.append('clientName', selectedTask.clientName)
-
-      // Use XHR for progress tracking
       const uploadResult = await new Promise<{ fileId: string; draftName: string; draftNumber: number; viewUrl: string }>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhrRef.current = xhr
@@ -98,16 +111,18 @@ function SubmitForm() {
           if (e.lengthComputable) setProgress(10 + Math.round((e.loaded / e.total) * 80))
         }
         xhr.onload = () => {
-          try {
-            const data = JSON.parse(xhr.responseText)
-            if (xhr.status >= 200 && xhr.status < 300) resolve(data)
-            else reject(new Error(data.error || `Upload failed: ${xhr.status}`))
-          } catch { reject(new Error(xhr.status === 413 ? 'File too large — server rejected the upload (413)' : `Could not parse upload response (status ${xhr.status}): ${xhr.responseText.slice(0,200)}`)) }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve({ fileId: fileKey, draftName, draftNumber, viewUrl })
+          } else {
+            reject(new Error(`DO Spaces upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`))
+          }
         }
         xhr.onerror = () => reject(new Error('Network error — check your connection'))
         xhr.onabort = () => reject(new Error('Upload cancelled'))
-        xhr.open('POST', '/api/upload-url')
-        xhr.send(formData)
+        xhr.open('PUT', presignedUrl)
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+        xhr.setRequestHeader('x-amz-acl', 'public-read')
+        xhr.send(file)
       })
 
       setProgress(92); setUploadStep('Saving submission…')
