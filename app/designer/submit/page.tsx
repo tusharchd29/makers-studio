@@ -102,7 +102,7 @@ function SubmitForm() {
             const data = JSON.parse(xhr.responseText)
             if (xhr.status >= 200 && xhr.status < 300) resolve(data)
             else reject(new Error(data.error || `Upload failed: ${xhr.status}`))
-          } catch { reject(new Error('Could not parse upload response')) }
+          } catch { reject(new Error(xhr.status === 413 ? 'File too large — server rejected the upload (413)' : `Could not parse upload response (status ${xhr.status}): ${xhr.responseText.slice(0,200)}`)) }
         }
         xhr.onerror = () => reject(new Error('Network error — check your connection'))
         xhr.onabort = () => reject(new Error('Upload cancelled'))
