@@ -1,5 +1,6 @@
 // ── Digital Ocean Spaces — File Storage ───────────────────────────────────
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 const MAX_FILE_SIZE_BYTES = 600 * 1024 * 1024 // 600MB
 const ALLOWED_EXTENSIONS  = ['.mp4', '.mov', '.avi', '.webm', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf']
@@ -54,7 +55,39 @@ export function validateFile(fileName: string, mimeType: string, sizeBytes: numb
   return { valid: true }
 }
 
-// ── Upload file to DO Spaces ──────────────────────────────────────────────
+
+// ── Validate file metadata only (no bytes) — used by presigned URL flow ──
+export function validateFileMeta(fileName: string, mimeType: string, sizeBytes: number): { valid: boolean; error?: string } {
+  return validateFile(fileName, mimeType, sizeBytes)
+}
+
+// ── Generate a presigned PUT URL so browser uploads directly to DO Spaces ──
+export async function generatePresignedUploadUrl(
+  fileKey: string,
+  mimeType: string,
+  expiresIn = 3600
+): Promise<{ presignedUrl: string; viewUrl: string }> {
+  const s3     = getS3Client()
+  const bucket = getBucket()
+  const region = process.env.DO_SPACES_REGION!
+
+  const command = new PutObjectCommand({
+    Bucket:      bucket,
+    Key:         fileKey,
+    ContentType: mimeType,
+    ACL:         'public-read',
+  })
+
+  const presignedUrl = await getSignedUrl(s3, command, { expiresIn })
+
+  const cdnBase = process.env.DO_SPACES_CDN_ENDPOINT
+    || `https://${bucket}.${region}.digitaloceanspaces.com`
+  const viewUrl = `${cdnBase}/${fileKey}`
+
+  return { presignedUrl, viewUrl }
+}
+
+// ── Upload file to DO Spaces (server-side, used for small files/brief images) ───
 // folderPath: e.g. "Honda/Reel Task" → stored as Honda/Reel Task/filename
 export async function uploadFile(
   fileName: string,
