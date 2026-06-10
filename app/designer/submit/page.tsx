@@ -117,7 +117,7 @@ function SubmitForm() {
             reject(new Error(`DO Spaces upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`))
           }
         }
-        xhr.onerror = () => reject(new Error('Network error — check your connection'))
+        xhr.onerror = () => reject(new Error('Upload failed — likely a CORS configuration issue on DO Spaces. Contact admin.'))
         xhr.onabort = () => reject(new Error('Upload cancelled'))
         xhr.open('PUT', presignedUrl)
         xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
