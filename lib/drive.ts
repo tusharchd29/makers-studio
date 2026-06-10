@@ -3,10 +3,16 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 const MAX_FILE_SIZE_BYTES = 600 * 1024 * 1024 // 600MB
-const ALLOWED_EXTENSIONS  = ['.mp4', '.mov', '.avi', '.webm', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf']
-const ALLOWED_MIME_TYPES  = [
-  'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm',
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
+// Validate by extension only — browser MIME types are unreliable (empty, wrong, platform-specific)
+const ALLOWED_EXTENSIONS  = [
+  // Video
+  '.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv', '.flv', '.3gp',
+  // Image
+  '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif', '.tiff', '.tif', '.bmp',
+  // Document / Design
+  '.pdf', '.psd', '.ai', '.eps', '.svg',
+  // Archive (for multi-file deliverables)
+  '.zip', '.rar',
 ]
 const MAX_DRAFTS = 2
 
@@ -45,9 +51,9 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 800): P
 
 // ── File Validation ───────────────────────────────────────────────────────
 export function validateFile(fileName: string, mimeType: string, sizeBytes: number): { valid: boolean; error?: string } {
-  const ext = '.' + fileName.split('.').pop()?.toLowerCase()
-  if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_MIME_TYPES.includes(mimeType)) {
-    return { valid: false, error: 'File type not allowed. Accepted: MP4, MOV, JPG, PNG, PDF' }
+  const ext = '.' + (fileName.split('.').pop() || '').toLowerCase()
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return { valid: false, error: `File type not allowed (.${fileName.split('.').pop()?.toLowerCase()}). Accepted: MP4, MOV, AVI, WEBM, MKV, JPG, PNG, PDF, PSD, AI, ZIP and more.` }
   }
   if (sizeBytes > MAX_FILE_SIZE_BYTES) {
     return { valid: false, error: 'File too large. Maximum size is 600MB' }
