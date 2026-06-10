@@ -1,34 +1,28 @@
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
-export const maxRequestBodySize = '600mb'
+export const maxDuration = 30
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySession } from '@/lib/auth'
-import { getSubmissionByTaskId, getRevisionsByTaskId } from '@/lib/store'
-import { uploadFile, validateFile, pruneOldDrafts } from '@/lib/drive'
+import { getSubmissionByTaskId } from '@/lib/store'
+import { validateFileMeta, generatePresignedUploadUrl } from '@/lib/drive'
 import { acquireLock, releaseLock } from '@/lib/sheets'
 
 export async function POST(req: NextRequest) {
-  // Session check BEFORE starting upload
   const token = req.cookies.get('ms_session')?.value
   if (!token) return NextResponse.json({ error: 'Session expired. Please log in again.' }, { status: 401 })
   const user = await verifySession(token)
   if (!user || user.role !== 'designer') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let taskId = ''
   try {
-    const formData   = await req.formData()
-    const file       = formData.get('file') as File | null
-    taskId           = formData.get('taskId') as string
-    const taskName   = formData.get('taskName') as string
-    const clientName = formData.get('clientName') as string
+    const body       = await req.json()
+    const { fileName, fileType, fileSize, taskId, taskName, clientName } = body
 
-    if (!file || !taskId || !taskName || !clientName)
+    if (!fileName || !fileType || !fileSize || !taskId || !taskName || !clientName)
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
-    // Validate file type and size
-    const validation = validateFile(file.name, file.type || '', file.size)
+    // Validate file type and size (metadata only — no file bytes here)
+    const validation = validateFileMeta(fileName, fileType, fileSize)
     if (!validation.valid) return NextResponse.json({ error: validation.error }, { status: 400 })
 
     // Duplicate submission guard
@@ -38,30 +32,21 @@ export async function POST(req: NextRequest) {
     try {
       const existing    = await getSubmissionByTaskId(taskId)
       const draftNumber = existing ? existing.draftNumber + 1 : 1
-      const ext         = file.name.split('.').pop() || 'bin'
+      const ext         = fileName.split('.').pop() || 'bin'
       const draftName   = `${taskName} - draft${draftNumber}.${ext}`
       const folderPath  = `${clientName}/${taskName}`
+      const fileKey     = `${folderPath}/${draftName}`
 
-      const arrayBuf = await file.arrayBuffer()
-      const buffer   = Buffer.from(arrayBuf)
-      const { fileId, viewUrl } = await uploadFile(draftName, file.type || 'application/octet-stream', buffer, folderPath)
+      const { presignedUrl, viewUrl } = await generatePresignedUploadUrl(fileKey, fileType)
 
-      // Prune old drafts — keep only last 2 per task
-      const revisions  = await getRevisionsByTaskId(taskId)
-      const allFileIds = revisions.map(r => r.storagePath).filter(Boolean)
-      allFileIds.push(fileId)
-      await pruneOldDrafts(allFileIds, fileId)
-
-      return NextResponse.json({ fileId, draftName, draftNumber, viewUrl })
-
+      return NextResponse.json({ presignedUrl, fileKey, draftName, draftNumber, viewUrl })
     } finally {
       await releaseLock(taskId)
     }
 
   } catch (e: unknown) {
-    if (taskId) await releaseLock(taskId).catch(() => {})
     const msg = e instanceof Error ? e.message : String(e)
-    console.error('Upload error:', msg)
+    console.error('Upload URL error:', msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
