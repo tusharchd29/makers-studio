@@ -1,5 +1,5 @@
 // ── Digital Ocean Spaces — File Storage ───────────────────────────────────
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, DeleteObjectCommand, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 const MAX_FILE_SIZE_BYTES = 600 * 1024 * 1024 // 600MB
@@ -124,6 +124,66 @@ export async function uploadFile(
     const viewUrl = `${cdnBase}/${key}`
     return { fileId: key, viewUrl }
   })
+}
+
+
+// ── Multipart upload — streams large files to DO Spaces in 10MB chunks ───
+// Bypasses Vercel body limit by using S3 multipart API
+export async function multipartUpload(
+  fileKey: string,
+  mimeType: string,
+  buffer: Buffer
+): Promise<{ viewUrl: string }> {
+  const s3     = getS3Client()
+  const bucket = getBucket()
+  const region = process.env.DO_SPACES_REGION!
+  const CHUNK  = 10 * 1024 * 1024 // 10MB per part (min 5MB for S3)
+
+  // 1. Initiate multipart upload
+  const { UploadId } = await s3.send(new CreateMultipartUploadCommand({
+    Bucket:      bucket,
+    Key:         fileKey,
+    ContentType: mimeType,
+    ACL:         'public-read',
+  }))
+  if (!UploadId) throw new Error('Failed to initiate multipart upload')
+
+  try {
+    // 2. Upload parts
+    const parts: { ETag: string; PartNumber: number }[] = []
+    let   partNumber = 1
+
+    for (let offset = 0; offset < buffer.length; offset += CHUNK) {
+      const chunk = buffer.slice(offset, offset + CHUNK)
+      const { ETag } = await s3.send(new UploadPartCommand({
+        Bucket:     bucket,
+        Key:        fileKey,
+        UploadId,
+        PartNumber: partNumber,
+        Body:       chunk,
+      }))
+      if (!ETag) throw new Error(`Missing ETag for part ${partNumber}`)
+      parts.push({ ETag, PartNumber: partNumber })
+      partNumber++
+    }
+
+    // 3. Complete
+    await s3.send(new CompleteMultipartUploadCommand({
+      Bucket:          bucket,
+      Key:             fileKey,
+      UploadId,
+      MultipartUpload: { Parts: parts },
+    }))
+
+    const cdnBase = process.env.DO_SPACES_CDN_ENDPOINT
+      || `https://${bucket}.${region}.digitaloceanspaces.com`
+    return { viewUrl: `${cdnBase}/${fileKey}` }
+
+  } catch (err) {
+    // Abort on failure to avoid leaving incomplete uploads
+    await s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: fileKey, UploadId })).catch(() => {})
+    throw err
+  }
 }
 
 // ── Delete a file ─────────────────────────────────────────────────────────
