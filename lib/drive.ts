@@ -6,7 +6,7 @@ const MAX_FILE_SIZE_BYTES = 600 * 1024 * 1024 // 600MB
 // Validate by extension only — browser MIME types are unreliable (empty, wrong, platform-specific)
 const ALLOWED_EXTENSIONS  = [
   // Video
-  '.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv', '.flv', '.3gp',
+  '.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv', '.flv', '.3gp', '.mts', '.m2ts', '.ts',
   // Image
   '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif', '.tiff', '.tif', '.bmp',
   // Document / Design
