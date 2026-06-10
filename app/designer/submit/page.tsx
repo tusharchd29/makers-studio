@@ -273,7 +273,7 @@ function SubmitForm() {
               <label className="field-label">
                 File *
                 <span style={{ color: '#aaa', textTransform: 'none', fontSize: '11px', fontWeight: 400, marginLeft: '6px' }}>
-                  MP4, MOV, JPG, PNG, PDF · max 600MB
+                  MP4, MOV, AVI, MKV, JPG, PNG, PDF, PSD, AI, ZIP · max 600MB
                 </span>
               </label>
               <div
@@ -285,7 +285,7 @@ function SubmitForm() {
                 style={{ opacity: submitting ? 0.7 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}
               >
                 <input ref={fileRef} type="file" style={{ display: 'none' }}
-                  accept="image/*,video/*"
+                  accept="image/*,video/*,.pdf,.psd,.ai,.eps,.svg,.zip,.rar,.mkv,.m4v,.wmv,.flv,.3gp,.tiff,.tif,.bmp,.heic,.heif"
                   onChange={e => e.target.files?.[0] && setFile(e.target.files[0])}
                   disabled={submitting} />
                 {file ? (
@@ -297,7 +297,7 @@ function SubmitForm() {
                   <div>
                     <i className="ti ti-cloud-upload" style={{ fontSize: '28px', display: 'block', marginBottom: '8px', color: '#C0DD97' }} />
                     <div style={{ color: '#888', marginBottom: '4px', fontSize: '13px' }}>Drag & drop or click to upload</div>
-                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, JPG, PNG · max 600MB</div>
+                    <div style={{ fontSize: '11px', color: '#aaa' }}>MP4, MOV, AVI, MKV, JPG, PNG, PDF, PSD, AI, ZIP · max 600MB</div>
                   </div>
                 )}
               </div>
