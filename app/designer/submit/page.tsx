@@ -285,7 +285,7 @@ function SubmitForm() {
                 style={{ opacity: submitting ? 0.7 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}
               >
                 <input ref={fileRef} type="file" style={{ display: 'none' }}
-                  accept="image/*,video/*,.pdf,.psd,.ai,.eps,.svg,.zip,.rar,.mkv,.m4v,.wmv,.flv,.3gp,.tiff,.tif,.bmp,.heic,.heif"
+                  accept="image/*,video/*,.pdf,.psd,.ai,.eps,.svg,.zip,.rar,.mkv,.m4v,.wmv,.flv,.3gp,.mts,.m2ts,.ts,.tiff,.tif,.bmp,.heic,.heif"
                   onChange={e => e.target.files?.[0] && setFile(e.target.files[0])}
                   disabled={submitting} />
                 {file ? (
